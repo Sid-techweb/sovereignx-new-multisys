@@ -1,0 +1,163 @@
+import logging
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
+from app.api import health, models, agents, documents, rag, tools
+from app.gateway.exceptions import (
+    UnsupportedProviderError,
+    OllamaUnavailableError,
+    ProviderInitializationError,
+    ProviderExecutionError
+)
+from app.rag.exceptions import (
+    EmbeddingModelUnavailableError,
+    DatabaseConnectionError,
+    IndexingError,
+    SearchQueryError
+)
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+# Setup basic structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("sovereignx")
+
+# Try to initialize database tables on startup
+try:
+    from app.database import engine, Base
+    from app.rag.models import SQLDocumentChunk
+    Base.metadata.create_all(bind=engine)
+    logger.info("PostgreSQL database tables initialized/verified successfully.")
+except Exception as e:
+    logger.warning(
+        f"Database table initialization failed. If PostgreSQL is offline, run pgvector container: {str(e)}"
+    )
+
+def get_cors_headers(request) -> dict:
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin in settings.ALLOWED_ORIGINS:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return headers
+
+app = FastAPI(
+    title="SovereignX Backend API",
+    description="Phase 1 Foundation & Model Gateway for MRPL Problem Statement SIH26117",
+    version="1.0.0"
+)
+
+# Exception handlers to avoid exposing raw stack traces to client
+@app.exception_handler(UnsupportedProviderError)
+async def unsupported_provider_handler(request, exc):
+    logger.error(f"Unsupported model provider: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(OllamaUnavailableError)
+async def ollama_unavailable_handler(request, exc):
+    logger.error(f"Ollama unavailable or offline: {exc}")
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc)},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(ProviderInitializationError)
+async def provider_initialization_handler(request, exc):
+    logger.error(f"Provider initialization failed: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(ProviderExecutionError)
+async def provider_execution_handler(request, exc):
+    logger.error(f"Provider execution failed: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(EmbeddingModelUnavailableError)
+async def embedding_model_unavailable_handler(request, exc):
+    logger.error(f"Embedding model unavailable: {exc}")
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc)},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(DatabaseConnectionError)
+async def database_connection_handler(request, exc):
+    logger.error(f"Database connection error: {exc}")
+    return JSONResponse(
+        status_code=503,
+        content={"detail": str(exc)},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(IndexingError)
+async def indexing_error_handler(request, exc):
+    logger.error(f"Indexing error: {exc}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc)},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(SearchQueryError)
+async def search_query_error_handler(request, exc):
+    logger.error(f"Search query error: {exc}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc)},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request, exc):
+    logger.error(f"HTTP exception: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=get_cors_headers(request)
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    logger.error(f"Validation error: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+        headers=get_cors_headers(request)
+    )
+
+
+# Configure CORS for local development (Vite dev server) and future environments
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include Routers
+app.include_router(health.router)
+app.include_router(models.router)
+app.include_router(agents.router)
+app.include_router(documents.router)
+app.include_router(rag.router)
+app.include_router(tools.router)
+
