@@ -195,7 +195,7 @@ async def process_document(document_id: str):
         extracted_dir.mkdir(parents=True, exist_ok=True)
         extracted_file = extracted_dir / f"{document_id}.json"
         
-        with open(extracted_file, "w") as f:
+        with open(extracted_file, "w", encoding="utf-8") as f:
             f.write(extracted_doc.model_dump_json())
             
         # Save updated metadata status
@@ -268,7 +268,7 @@ async def get_document_content(document_id: str):
         )
         
     try:
-        with open(extracted_file, "r") as f:
+        with open(extracted_file, "r", encoding="utf-8") as f:
             data = json.load(f)
             return ExtractedDocument(**data)
     except Exception as e:

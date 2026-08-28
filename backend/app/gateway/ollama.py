@@ -23,7 +23,8 @@ class OllamaGateway(ModelGateway):
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.0
+                "temperature": 0.0,
+                "num_predict": 512
             }
         }
         if system_prompt:

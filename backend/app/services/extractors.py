@@ -145,15 +145,36 @@ class ImageExtractor(DocumentExtractor):
                 "Qwen/Qwen2-VL-2B-Instruct",
                 local_files_only=True
             )
-            cls._model = Qwen2VLForConditionalGeneration.from_pretrained(
-                "Qwen/Qwen2-VL-2B-Instruct",
-                local_files_only=True
-            )
             
             if torch.cuda.is_available():
-                cls._model = cls._model.to("cuda")
-                logger.info("Qwen2-VL loaded to GPU (CUDA)")
+                try:
+                    from transformers import BitsAndBytesConfig
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_compute_dtype=torch.float16,
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_quant_type="nf4"
+                    )
+                    cls._model = Qwen2VLForConditionalGeneration.from_pretrained(
+                        "Qwen/Qwen2-VL-2B-Instruct",
+                        quantization_config=quantization_config,
+                        device_map="auto",
+                        local_files_only=True
+                    )
+                    logger.info("Qwen2-VL loaded locally in 4-bit quantized mode to GPU (CUDA)")
+                except Exception as e:
+                    logger.warning(f"Failed to load Qwen2-VL in 4-bit mode: {e}. Falling back to standard load.")
+                    cls._model = Qwen2VLForConditionalGeneration.from_pretrained(
+                        "Qwen/Qwen2-VL-2B-Instruct",
+                        local_files_only=True
+                    )
+                    cls._model = cls._model.to("cuda")
+                    logger.info("Qwen2-VL loaded to GPU (CUDA)")
             else:
+                cls._model = Qwen2VLForConditionalGeneration.from_pretrained(
+                    "Qwen/Qwen2-VL-2B-Instruct",
+                    local_files_only=True
+                )
                 cls._model = cls._model.to("cpu")
                 logger.info("Qwen2-VL loaded to CPU")
 

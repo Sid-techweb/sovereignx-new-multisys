@@ -71,3 +71,14 @@ class LocalDocumentStorage(DocumentStorage):
                 os.remove(target_path)
         except ValueError:
             pass
+
+    def get_extracted_document(self, document_id: str):
+        """Loads and returns the ExtractedDocument model by reading its JSON file from storage."""
+        import json
+        from app.schemas.documents import ExtractedDocument
+        extracted_file = self.base_path / "extracted" / f"{document_id}.json"
+        if not extracted_file.exists():
+            raise FileNotFoundError(f"Extracted content file for document {document_id} not found.")
+        with open(extracted_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return ExtractedDocument(**data)

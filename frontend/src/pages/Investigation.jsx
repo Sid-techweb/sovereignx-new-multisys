@@ -21,10 +21,10 @@ export default function Investigation({ modelConfig, isConnected }) {
     setAnalysisResult(null);
 
     try {
-      const response = await fetch(`${API_BASE}/models/chat`, {
+      const response = await fetch(`${API_BASE}/agents/investigate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ query: prompt })
       });
 
       if (!response.ok) {
@@ -33,7 +33,20 @@ export default function Investigation({ modelConfig, isConnected }) {
       }
 
       const data = await response.json();
-      setAnalysisResult(data);
+      const formattedResult = {
+        finding: data.answer,
+        sop_reference: data.retrieved_chunks
+          ? data.retrieved_chunks
+              .map(c => c.filename)
+              .filter((v, i, a) => a.indexOf(v) === i)
+              .join(', ')
+          : 'N/A',
+        confidence: data.confidence,
+        recommended_action: data.tool_executions && data.tool_executions.length > 0 
+          ? data.tool_executions.map(t => t.outputs?.summary).filter(Boolean).join('\n')
+          : 'Review RAG evidence citations above.'
+      };
+      setAnalysisResult(formattedResult);
     } catch (err) {
       setError(err.message || 'An error occurred during analysis');
     } finally {

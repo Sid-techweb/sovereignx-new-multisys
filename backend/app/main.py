@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import health, models, agents, documents, rag, tools
+from app.api import health, models, agents, documents, rag, tools, reports
 from app.gateway.exceptions import (
     UnsupportedProviderError,
     OllamaUnavailableError,
@@ -160,4 +160,16 @@ app.include_router(agents.router)
 app.include_router(documents.router)
 app.include_router(rag.router)
 app.include_router(tools.router)
+app.include_router(reports.router)
+
+# Preload/initialize BGE-M3 embedding model exactly once at application startup
+@app.on_event("startup")
+def startup_event():
+    logger.info("FastAPI startup: Preloading local BGE-M3 embedding model...")
+    try:
+        from app.rag.embeddings import BGEM3EmbeddingProvider
+        BGEM3EmbeddingProvider().initialize()
+        logger.info("FastAPI startup: BGE-M3 preloaded successfully.")
+    except Exception as e:
+        logger.error(f"FastAPI startup: Failed to preload BGE-M3: {e}")
 

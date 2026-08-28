@@ -37,7 +37,7 @@ class LocalToolRegistry:
 
     def log_execution(self, entry: ToolExecutionLogEntry):
         try:
-            with open(self.log_path, "a") as f:
+            with open(self.log_path, "a", encoding="utf-8") as f:
                 f.write(entry.model_dump_json() + "\n")
         except Exception as e:
             logger.error(f"Failed to write tool execution log: {e}")
@@ -48,7 +48,7 @@ class LocalToolRegistry:
         
         entries = []
         try:
-            with open(self.log_path, "r") as f:
+            with open(self.log_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
                 # Read from latest to oldest
                 for line in reversed(lines):

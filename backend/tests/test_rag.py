@@ -357,3 +357,51 @@ class TestRAGAPIAndCORS(unittest.TestCase):
         self.assertEqual(response.headers.get("access-control-allow-origin"), "http://localhost:5173")
         self.assertEqual(response.headers.get("access-control-allow-credentials"), "true")
 
+    @patch("app.services.metadata_store.DocumentMetadataStore.get")
+    @patch("app.services.storage.LocalDocumentStorage.get_extracted_document")
+    @patch("app.rag.embeddings.BGEM3EmbeddingProvider.get_embeddings")
+    def test_index_document_api_endpoint_succeeds(self, mock_get_embeddings, mock_get_extracted_document, mock_get_metadata):
+        # 1. Mock Document Metadata Store
+        mock_get_metadata.return_value = {
+            "document_id": "test-doc-id",
+            "filename": "sop.pdf",
+            "source": "user_upload",
+            "uploaded_at": "2026-08-26T12:00:00Z"
+        }
+
+        # 2. Mock Extracted Document
+        mock_get_extracted_document.return_value = ExtractedDocument(
+            document_id="test-doc-id",
+            filename="sop.pdf",
+            source="user_upload",
+            content="Standard Operating Procedure text containing ≤ and °.",
+            content_type="text",
+            extraction_status="processed",
+            metadata={"checksum_sha256": "fake-sha"},
+            created_at="2026-08-26T12:00:00Z"
+        )
+
+        # 3. Mock Embeddings
+        mock_get_embeddings.return_value = [[0.1] * 1024]
+        
+        # 4. Mock pgvector database operations (duplicate check empty)
+        self.mock_db.query().filter().all.return_value = []
+
+        # 5. Call API
+        response = self.client.post(
+            "/knowledge-base/index/test-doc-id",
+            headers={"Origin": "http://localhost:5173"}
+        )
+
+        # 6. Verify status and response
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data["document_id"], "test-doc-id")
+        self.assertEqual(data["filename"], "sop.pdf")
+        self.assertEqual(data["status"], "indexed")
+        self.assertEqual(data["chunks_created"], 1)
+
+        # Check CORS headers are present on successful 201 response
+        self.assertEqual(response.headers.get("access-control-allow-origin"), "http://localhost:5173")
+        self.assertEqual(response.headers.get("access-control-allow-credentials"), "true")
+

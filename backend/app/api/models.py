@@ -99,11 +99,19 @@ async def grounded_query(
     # 2. Build the grounding prompt via shared helper
     system_prompt, full_prompt = build_grounding_prompt(query, results)
 
-    # Print the literal prompt string sent to Qwen2.5-7B-Instruct
-    print("\n--- LITERAL PROMPT SENT TO OLLAMA START ---")
-    print(f"SYSTEM PROMPT:\n{system_prompt}\n")
-    print(f"USER PROMPT:\n{full_prompt}")
-    print("--- LITERAL PROMPT SENT TO OLLAMA END ---\n")
+    # Print the literal prompt string sent to Qwen2.5-7B-Instruct safely
+    try:
+        print("\n--- LITERAL PROMPT SENT TO OLLAMA START ---")
+        print(f"SYSTEM PROMPT:\n{system_prompt}\n")
+        print(f"USER PROMPT:\n{full_prompt}")
+        print("--- LITERAL PROMPT SENT TO OLLAMA END ---\n")
+    except UnicodeEncodeError:
+        import sys
+        enc = sys.stdout.encoding or "utf-8"
+        print("\n--- LITERAL PROMPT SENT TO OLLAMA START ---")
+        print(f"SYSTEM PROMPT:\n{system_prompt.encode(enc, errors='replace').decode(enc)}\n")
+        print(f"USER PROMPT:\n{full_prompt.encode(enc, errors='replace').decode(enc)}")
+        print("--- LITERAL PROMPT SENT TO OLLAMA END ---\n")
 
     # 3. Call the configured Model Gateway
     start_time = time.perf_counter()

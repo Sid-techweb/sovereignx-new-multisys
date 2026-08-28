@@ -197,7 +197,7 @@ class TestLocalTools(unittest.TestCase):
         
         # Verify JSONL log file has entries
         self.assertTrue(tool_registry.log_path.exists())
-        with open(tool_registry.log_path, "r") as f:
+        with open(tool_registry.log_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
             self.assertEqual(len(lines), 2)
             

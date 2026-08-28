@@ -179,6 +179,32 @@ class TestDocumentIntakeAndExtraction(unittest.TestCase):
         self.assertEqual(data["extraction_status"], "processed")
         self.assertIn("Pump P-204 Vibration is elevated", data["content"])
 
+    @patch("pypdf.PageObject.extract_text")
+    def test_pdf_extraction_unicode_succeeds(self, mock_extract_text):
+        """Test PDF extraction: A PDF containing Unicode characters (e.g. ≤, °) is extracted and stored successfully"""
+        # 1. Mock page extraction to return Unicode characters
+        mock_extract_text.return_value = "Pump P-204 Vibration is ≤ 4.0 mm/s and Temp is 80°C"
+        
+        # 2. Upload PDF
+        up_res = self.client.post(
+            "/documents/upload",
+            files={"file": ("pump_sop_unicode.pdf", MINIMAL_PDF, "application/pdf")}
+        )
+        self.assertEqual(up_res.status_code, 201)
+        doc_id = up_res.json()["document_id"]
+        
+        # 3. Trigger processing
+        proc_res = self.client.post(f"/documents/{doc_id}/process")
+        self.assertEqual(proc_res.status_code, 200)
+        self.assertEqual(proc_res.json()["status"], "processed")
+        
+        # 4. Verify extracted content holds the Unicode characters
+        content_res = self.client.get(f"/documents/{doc_id}/content")
+        self.assertEqual(content_res.status_code, 200)
+        data = content_res.json()
+        self.assertEqual(data["extraction_status"], "processed")
+        self.assertIn("Pump P-204 Vibration is ≤ 4.0 mm/s and Temp is 80°C", data["content"])
+
     def test_csv_extraction_succeeds(self):
         """Test CSV extraction: A small CSV produces deterministic normalized text"""
         # 1. Upload CSV

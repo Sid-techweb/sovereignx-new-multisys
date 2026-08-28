@@ -43,10 +43,10 @@ class TestAgentWiring(unittest.TestCase):
     def test_analysis_agent_and_tool_wiring(self, mock_generate):
         """Test AnalysisAgent coordinates generation and dynamically triggers tool calls"""
         mock_generate.return_value = (
-            "The bearing housing temperature was 91 C. "
-            "The SOP limit is 80 C. "
-            "The vibration was 5.8 mm/s. "
-            "The SOP vibration limit is 4.0 mm/s."
+            "The bearing housing temperature was 91 C [Source: pump_P204_sensor_data.csv | chunk_id=c1]. "
+            "The SOP limit is 80 C [Source: pump_P204_SOP.pdf | chunk_id=c2]. "
+            "The vibration was 5.8 mm/s [Source: pump_P204_sensor_data.csv | chunk_id=c1]. "
+            "The SOP vibration limit is 4.0 mm/s [Source: pump_P204_SOP.pdf | chunk_id=c2]."
         )
         
         mock_chunks = [
@@ -94,6 +94,104 @@ class TestAgentWiring(unittest.TestCase):
         self.assertEqual(v_exec["context_id"], "ctx-999")
         self.assertTrue(v_exec["outputs"]["is_exceeded"])
         self.assertIn("Exceedance detected", v_exec["outputs"]["summary"])
+
+    @patch("app.gateway.ollama.OllamaGateway.generate")
+    def test_analysis_agent_generalize_phrasing(self, mock_generate):
+        """Test AnalysisAgent generalizes and extracts metrics with novel phrasings like 'reached'"""
+        mock_generate.return_value = (
+            "The bearing housing temperature reached 93 C [Source: pump_P204_sensor_data.csv | chunk_id=c1]. "
+            "The SOP limit is 80 C [Source: pump_P204_SOP.pdf | chunk_id=c2]. "
+            "The vibration reached 6.1 mm/s [Source: pump_P204_sensor_data.csv | chunk_id=c1]. "
+            "The SOP vibration limit is 4.0 mm/s [Source: pump_P204_SOP.pdf | chunk_id=c2]."
+        )
+        
+        mock_chunks = [
+            {
+                "chunk_id": "c1",
+                "document_id": "d1",
+                "filename": "pump_P204_sensor_data.csv",
+                "content": "bearing temperature reached 93 C and vibration reached 6.1 mm/s",
+                "score": 0.9
+            },
+            {
+                "chunk_id": "c2",
+                "document_id": "d2",
+                "filename": "pump_P204_SOP.pdf",
+                "content": "bearing housing temperature limit is 80 C\nvibration limits standard 4.0 mm/s",
+                "score": 0.8
+            }
+        ]
+        
+        from app.gateway.ollama import OllamaGateway
+        mock_gateway = MagicMock(spec=OllamaGateway)
+        mock_gateway.generate = mock_generate
+        mock_gateway.model_name = "qwen2.5:7b"
+        
+        agent = AnalysisAgent(mock_gateway)
+        
+        import asyncio
+        result = asyncio.run(agent.analyze("P-204", mock_chunks, context_id="ctx-generalize"))
+        
+        self.assertEqual(len(result["tool_executions"]), 2)
+        
+        # Verify first tool execution matches temperature value 93 C
+        t_exec = result["tool_executions"][0]
+        self.assertIn("93.0 C", t_exec["outputs"]["summary"])
+        self.assertIn("80.0 C", t_exec["outputs"]["summary"])
+        
+        # Verify second tool execution matches vibration value 6.1 mm/s
+        v_exec = result["tool_executions"][1]
+        self.assertIn("6.1 mm/s", v_exec["outputs"]["summary"])
+        self.assertIn("4.0 mm/s", v_exec["outputs"]["summary"])
+
+    @patch("app.gateway.ollama.OllamaGateway.generate")
+    def test_analysis_agent_generalize_registered_phrasing(self, mock_generate):
+        """Test AnalysisAgent extracts metrics using 'registered' phrasing"""
+        mock_generate.return_value = (
+            "The bearing housing temperature registered 94 C [Source: pump_P204_sensor_data.csv | chunk_id=c1]. "
+            "The SOP limit is 80 C [Source: pump_P204_SOP.pdf | chunk_id=c2]. "
+            "The vibration registered 6.3 mm/s [Source: pump_P204_sensor_data.csv | chunk_id=c1]. "
+            "The SOP vibration limit is 4.0 mm/s [Source: pump_P204_SOP.pdf | chunk_id=c2]."
+        )
+        
+        mock_chunks = [
+            {
+                "chunk_id": "c1",
+                "document_id": "d1",
+                "filename": "pump_P204_sensor_data.csv",
+                "content": "bearing temperature registered 94 C and vibration registered 6.3 mm/s",
+                "score": 0.9
+            },
+            {
+                "chunk_id": "c2",
+                "document_id": "d2",
+                "filename": "pump_P204_SOP.pdf",
+                "content": "bearing housing temperature limit is 80 C\nvibration limits standard 4.0 mm/s",
+                "score": 0.8
+            }
+        ]
+        
+        from app.gateway.ollama import OllamaGateway
+        mock_gateway = MagicMock(spec=OllamaGateway)
+        mock_gateway.generate = mock_generate
+        mock_gateway.model_name = "qwen2.5:7b"
+        
+        agent = AnalysisAgent(mock_gateway)
+        
+        import asyncio
+        result = asyncio.run(agent.analyze("P-204", mock_chunks, context_id="ctx-generalize-reg"))
+        
+        self.assertEqual(len(result["tool_executions"]), 2)
+        
+        # Verify first tool execution matches temperature value 94 C
+        t_exec = result["tool_executions"][0]
+        self.assertIn("94.0 C", t_exec["outputs"]["summary"])
+        self.assertIn("80.0 C", t_exec["outputs"]["summary"])
+        
+        # Verify second tool execution matches vibration value 6.3 mm/s
+        v_exec = result["tool_executions"][1]
+        self.assertIn("6.3 mm/s", v_exec["outputs"]["summary"])
+        self.assertIn("4.0 mm/s", v_exec["outputs"]["summary"])
 
     def test_report_agent_confidence_calculation(self):
         """Test ReportAgent calculates confidence cleanly as the average score of chunks"""
@@ -145,7 +243,7 @@ class TestAgentWiring(unittest.TestCase):
             ],
             False
         )
-        mock_generate.return_value = "Answer context."
+        mock_generate.return_value = "Answer context [Source: pump_P204_sensor_data.csv | chunk_id=c1] [Source: pump_P204_SOP.pdf | chunk_id=c2]."
         
         with patch.object(settings, "MODEL_PROVIDER", "ollama"):
             response = self.client.post(
@@ -156,7 +254,7 @@ class TestAgentWiring(unittest.TestCase):
             data = response.json()
             
             self.assertEqual(data["query"], "What happened to Pump P-204?")
-            self.assertEqual(data["answer"], "Answer context.")
+            self.assertEqual(data["answer"], mock_generate.return_value)
             self.assertEqual(data["confidence"], 0.85) # (0.9 + 0.8) / 2
             self.assertEqual(len(data["tool_executions"]), 2)
             self.assertEqual(data["tool_executions"][0]["context_id"], "test-context-123")

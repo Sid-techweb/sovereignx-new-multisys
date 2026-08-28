@@ -14,20 +14,20 @@ class DocumentMetadataStore:
         # Ensure directories exist
         self.base_path.mkdir(parents=True, exist_ok=True)
         if not self.metadata_file.exists():
-            with open(self.metadata_file, "w") as f:
+            with open(self.metadata_file, "w", encoding="utf-8") as f:
                 json.dump({}, f)
 
     def _read_all(self) -> dict:
         try:
             if not self.metadata_file.exists():
                 return {}
-            with open(self.metadata_file, "r") as f:
+            with open(self.metadata_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return {}
 
     def _write_all(self, data: dict):
-        with open(self.metadata_file, "w") as f:
+        with open(self.metadata_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
     def save(self, doc_id: str, doc_data: dict):

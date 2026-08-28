@@ -17,10 +17,26 @@ class EmbeddingProvider:
 
 class BGEM3EmbeddingProvider(EmbeddingProvider):
     """Local offline embedding generator using BAAI/bge-m3."""
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        import sys
+        # Disable singleton pattern during unit testing to allow mock patching and isolation
+        if "pytest" in sys.modules or "unittest" in sys.modules:
+            instance = super(BGEM3EmbeddingProvider, cls).__new__(cls)
+            instance._initialized = False
+            return instance
+
+        if cls._instance is None:
+            cls._instance = super(BGEM3EmbeddingProvider, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self, model_name: str = None):
+        if self._initialized:
+            return
         self.model_name = model_name or settings.EMBEDDING_MODEL or "BAAI/bge-m3"
         self._model = None
-        self._initialized = False
 
     def initialize(self):
         if self._initialized:

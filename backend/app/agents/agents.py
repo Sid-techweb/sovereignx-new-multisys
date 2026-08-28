@@ -21,9 +21,11 @@ def extract_temperature_metrics(chunks: List[Dict[str, Any]]) -> Optional[Dict[s
     
     # Try to find temperature_c: <num> in CSV or measured temperature in text
     csv_pattern = re.compile(r"temperature_c:\s*([0-9.]+)", re.IGNORECASE)
-    text_reading_pattern = re.compile(r"temperature(?:_c)?\s*(?:was|measured\s*at|reading\s*was|reading\s*was\s*measured\s*at)\s*([0-9.]+)", re.IGNORECASE)
-    # Try to find temperature limit: <num>, avoiding asset IDs like P-204, supporting matching across newlines
-    limit_pattern = re.compile(r"temperature(?:_c)?\s*(?:bearing\s*housing\s*)?(?:limit|threshold|maximum|permitted).{0,100}?\b(?<!P-)(?<!Pump P-)(?<!INC-)(?<!INS-)([0-9.]+)\b", re.IGNORECASE | re.DOTALL)
+    text_reading_pattern = re.compile(r"temperature[s]?(?:_c)?\s*(?:was|measured\s*at|reading\s*was|reading\s*was\s*measured\s*at|peaked\s*at|peaking\s*at|recorded\s*at|logged\s*at|reached|reached\s*at|registered|registered\s*at)\s*([0-9.]+)", re.IGNORECASE)
+    
+    # Bidirectional limit patterns
+    limit_pattern_1 = re.compile(r"temperature(?:_c)?\s*(?:bearing\s*housing\s*)?(?:limit|threshold|maximum|permitted).{0,100}?\b(?<!P-)(?<!Pump P-)(?<!INC-)(?<!INS-)([0-9.]+)\b", re.IGNORECASE | re.DOTALL)
+    limit_pattern_2 = re.compile(r"temperature(?:_c)?\s*(?:bearing\s*housing\s*)?.{0,100}?\b(?<!P-)(?<!Pump P-)(?<!INC-)(?<!INS-)([0-9.]+)\b\s*(?:C|F)?\s*(?:limit|threshold|maximum|permitted)", re.IGNORECASE | re.DOTALL)
     
     for chunk in chunks:
         content = chunk.get("content", "")
@@ -36,9 +38,13 @@ def extract_temperature_metrics(chunks: List[Dict[str, Any]]) -> Optional[Dict[s
             if text_matches:
                 reading = float(text_matches[0])
                 
-        limit_matches = limit_pattern.findall(content)
+        limit_matches = limit_pattern_1.findall(content)
         if limit_matches:
             limit = float(limit_matches[0])
+        else:
+            limit_matches = limit_pattern_2.findall(content)
+            if limit_matches:
+                limit = float(limit_matches[0])
             
     if reading is not None and limit is not None:
         return {"reading": reading, "limit": limit}
@@ -50,9 +56,11 @@ def extract_vibration_metrics(chunks: List[Dict[str, Any]]) -> Optional[Dict[str
     
     # Try to find vibration_mm_s: <num> in CSV or measured vibration in text
     csv_pattern = re.compile(r"vibration_mm_s:\s*([0-9.]+)", re.IGNORECASE)
-    text_reading_pattern = re.compile(r"vibration\s*(?:was|measured\s*at|reading\s*was|reading\s*was\s*elevated\s*at)\s*([0-9.]+)", re.IGNORECASE)
-    # Try to find vibration limit: <num>, avoiding asset IDs like P-204, supporting matching across newlines
-    limit_pattern = re.compile(r"vibration\s*(?:limits|limit|threshold|maximum|permissible).{0,100}?\b(?<!P-)(?<!Pump P-)(?<!INC-)(?<!INS-)([0-9.]+)\b", re.IGNORECASE | re.DOTALL)
+    text_reading_pattern = re.compile(r"vibration[s]?\s*(?:was|were|measured\s*at|reading\s*was|reading\s*was\s*elevated\s*at|recorded\s*at|readings\s*were\s*recorded\s*at|reached|reached\s*at|registered|registered\s*at)\s*([0-9.]+)", re.IGNORECASE)
+    
+    # Bidirectional limit patterns
+    limit_pattern_1 = re.compile(r"vibration\s*(?:limits|limit|threshold|maximum|permissible).{0,100}?\b(?<!P-)(?<!Pump P-)(?<!INC-)(?<!INS-)([0-9.]+)\b", re.IGNORECASE | re.DOTALL)
+    limit_pattern_2 = re.compile(r"vibration\s*.{0,100}?\b(?<!P-)(?<!Pump P-)(?<!INC-)(?<!INS-)([0-9.]+)\b\s*(?:mm/s)?\s*(?:standard)?\s*(?:limits|limit|threshold|maximum|permissible)", re.IGNORECASE | re.DOTALL)
     
     for chunk in chunks:
         content = chunk.get("content", "")
@@ -64,9 +72,13 @@ def extract_vibration_metrics(chunks: List[Dict[str, Any]]) -> Optional[Dict[str
             if text_matches:
                 reading = float(text_matches[0])
                 
-        limit_matches = limit_pattern.findall(content)
+        limit_matches = limit_pattern_1.findall(content)
         if limit_matches:
             limit = float(limit_matches[0])
+        else:
+            limit_matches = limit_pattern_2.findall(content)
+            if limit_matches:
+                limit = float(limit_matches[0])
             
     if reading is not None and limit is not None:
         return {"reading": reading, "limit": limit}
@@ -116,20 +128,32 @@ class AnalysisAgent:
         # Reusing the exact proven system prompt from Stage 1 via shared helper
         system_prompt, full_prompt = build_grounding_prompt(query, retrieved_chunks)
 
-        # Print the literal prompt string sent to Qwen2.5-7B-Instruct
-        print("\n--- LITERAL PROMPT SENT TO OLLAMA START ---")
-        print(f"SYSTEM PROMPT:\n{system_prompt}\n")
-        print(f"USER PROMPT:\n{full_prompt}")
-        print("--- LITERAL PROMPT SENT TO OLLAMA END ---\n")
+        # Print the literal prompt string sent to Qwen2.5-7B-Instruct safely
+        try:
+            print("\n--- LITERAL PROMPT SENT TO OLLAMA START ---")
+            print(f"SYSTEM PROMPT:\n{system_prompt}\n")
+            print(f"USER PROMPT:\n{full_prompt}")
+            print("--- LITERAL PROMPT SENT TO OLLAMA END ---\n")
+        except UnicodeEncodeError:
+            import sys
+            enc = sys.stdout.encoding or "utf-8"
+            print("\n--- LITERAL PROMPT SENT TO OLLAMA START ---")
+            print(f"SYSTEM PROMPT:\n{system_prompt.encode(enc, errors='replace').decode(enc)}\n")
+            print(f"USER PROMPT:\n{full_prompt.encode(enc, errors='replace').decode(enc)}")
+            print("--- LITERAL PROMPT SENT TO OLLAMA END ---\n")
 
         # Code reference proving reuse: calling the identical gateway generate pathway
         answer = await self.gateway.generate(prompt=full_prompt, system_prompt=system_prompt)
+
+        # Parse cited chunk IDs from the LLM answer text
+        cited_chunk_ids = set(re.findall(r'chunk_id=([a-f0-9\-]+)', answer))
+        cited_chunks = [c for c in retrieved_chunks if c.get("chunk_id") in cited_chunk_ids]
 
         # Tool execution matching readings and limits dynamically via regex
         tool_executions = []
         
         # Dynamic Extraction: Temperature
-        temp_metrics = extract_temperature_metrics(retrieved_chunks)
+        temp_metrics = extract_temperature_metrics(cited_chunks)
         if temp_metrics:
             logger.info(f"Dynamically executing temperature comparison: {temp_metrics}")
             tool_resp = self.tool_registry.execute(
@@ -145,7 +169,7 @@ class AnalysisAgent:
             tool_executions.append(tool_resp.model_dump())
 
         # Dynamic Extraction: Vibration
-        vib_metrics = extract_vibration_metrics(retrieved_chunks)
+        vib_metrics = extract_vibration_metrics(cited_chunks)
         if vib_metrics:
             logger.info(f"Dynamically executing vibration comparison: {vib_metrics}")
             tool_resp = self.tool_registry.execute(
