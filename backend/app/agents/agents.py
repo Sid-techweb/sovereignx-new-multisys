@@ -10,6 +10,7 @@ from app.rag.embeddings import BGEM3EmbeddingProvider
 from app.gateway import ModelGateway
 from app.services.tools import LocalToolRegistry
 from app.services.grounding import build_grounding_prompt
+from app.tools.calculation_verifier import extract_and_verify_calculation_async
 
 logger = logging.getLogger("sovereignx")
 
@@ -85,6 +86,28 @@ def extract_vibration_metrics(chunks: List[Dict[str, Any]]) -> Optional[Dict[str
     return None
 
 
+def is_calculation_check_query(query: str) -> bool:
+    """
+    Detection logic for identifying calculation verification requests.
+    Checks for calculation keywords ('verify calculation', 'check formula', etc.)
+    or mathematical variable equations with assignments and operators.
+    """
+    q = query.lower()
+    calc_keywords = [
+        "verify calculation", "check calculation", "verify formula", "check formula",
+        "verify equation", "check equation", "verify math", "check math", "calculate formula",
+        "claimed answer", "computed answer"
+    ]
+    if any(kw in q for kw in calc_keywords):
+        return True
+    
+    # Pattern check: equation with "=" and numeric assignment or arithmetic operator
+    if "=" in q and re.search(r'\b[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*[0-9]+', q) and re.search(r'[\+\-\*\/\^]', q):
+        return True
+
+    return False
+
+
 # --- The Four Agents ---
 
 class IntakeAgent:
@@ -123,12 +146,53 @@ class AnalysisAgent:
     async def analyze(self, query: str, retrieved_chunks: List[Dict[str, Any]], context_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Generates the grounded answer using the proven Stage 1 prompt & generate() pathway.
-        Then, dynamically parses the evidence to execute relevant Phase 6 comparison tools.
+        Or routes calculation-check requests to the calculation verification tool path.
         """
-        # Reusing the exact proven system prompt from Stage 1 via shared helper
+        # Step 3 Task 1: Check if request is a calculation verification query
+        if is_calculation_check_query(query):
+            logger.info("Calculation-check request detected. Routing to verify_engineering_calculation tool path.")
+            
+            # Execute calculation verification with LLM gateway & safe AST evaluator
+            calc_res = await extract_and_verify_calculation_async(query, gateway=self.gateway)
+            
+            # Register execution in LocalToolRegistry for audit logging
+            tool_resp = self.tool_registry.execute(
+                tool_name="verify_engineering_calculation",
+                arguments={"text_input": query},
+                context_id=context_id
+            )
+            
+            status = calc_res.get("status", "NEEDS_REVIEW")
+            formula = calc_res.get("formula") or "N/A"
+            claimed = calc_res.get("claimed") if calc_res.get("claimed") is not None else "N/A"
+            computed = calc_res.get("computed") if calc_res.get("computed") is not None else "N/A"
+            delta = calc_res.get("delta") if calc_res.get("delta") is not None else "N/A"
+            extraction_method = calc_res.get("extraction_method", "regex_fallback")
+            summary = calc_res.get("summary", "")
+
+            # Formatted Tool Result Table string
+            table_header = "| METRIC | CLAIMED | COMPUTED | DELTA | RESULT |\n|---|---|---|---|---|\n"
+            table_row = f"| Formula: `{formula}` | `{claimed}` | `{computed}` | `{delta}` | **{status}** |\n"
+            
+            formatted_answer = (
+                f"### Engineering Calculation Verification\n\n"
+                f"{table_header}{table_row}\n"
+                f"**Extraction Method**: `{extraction_method}`\n\n"
+                f"**Summary**: {summary}"
+            )
+
+            # Ensure tool execution entry has the rich outputs dictionary
+            tool_exec_entry = tool_resp.model_dump()
+            tool_exec_entry["outputs"] = calc_res
+
+            return {
+                "answer": formatted_answer,
+                "tool_executions": [tool_exec_entry]
+            }
+
+        # NON-CALCULATION PATH: Reusing exact proven system prompt and workflow
         system_prompt, full_prompt = build_grounding_prompt(query, retrieved_chunks)
 
-        # Print the literal prompt string sent to Qwen2.5-7B-Instruct safely
         try:
             print("\n--- LITERAL PROMPT SENT TO OLLAMA START ---")
             print(f"SYSTEM PROMPT:\n{system_prompt}\n")
@@ -142,14 +206,12 @@ class AnalysisAgent:
             print(f"USER PROMPT:\n{full_prompt.encode(enc, errors='replace').decode(enc)}")
             print("--- LITERAL PROMPT SENT TO OLLAMA END ---\n")
 
-        # Code reference proving reuse: calling the identical gateway generate pathway
         answer = await self.gateway.generate(prompt=full_prompt, system_prompt=system_prompt)
 
         # Parse cited chunk IDs from the LLM answer text
         cited_chunk_ids = set(re.findall(r'chunk_id=([a-f0-9\-]+)', answer))
         cited_chunks = [c for c in retrieved_chunks if c.get("chunk_id") in cited_chunk_ids]
 
-        # Tool execution matching readings and limits dynamically via regex
         tool_executions = []
         
         # Dynamic Extraction: Temperature

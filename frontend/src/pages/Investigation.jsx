@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import PageHeader from '../components/common/PageHeader';
-import { Send, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Send, RefreshCw, AlertTriangle, CheckCircle, Sparkles, ChevronRight, FileText, Activity } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
 const API_KEY = import.meta.env.VITE_API_KEY || 'sovereignx-demo-key-2026';
@@ -12,9 +12,10 @@ export default function Investigation({ modelConfig, isConnected }) {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [createCaseStatus, setCreateCaseStatus] = useState(null);
 
   const handleAnalyze = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!prompt.trim()) return;
 
     setIsLoading(true);
@@ -64,8 +65,6 @@ export default function Investigation({ modelConfig, isConnected }) {
     }
   };
 
-  const [createCaseStatus, setCreateCaseStatus] = useState(null);
-
   const handleCreateCase = async (isEscalated = false) => {
     if (!analysisResult) return;
     setCreateCaseStatus('creating');
@@ -95,201 +94,287 @@ export default function Investigation({ modelConfig, isConnected }) {
     }
   };
 
+  const handleNewTurn = () => {
+    setPrompt('');
+    setAnalysisResult(null);
+    setError(null);
+    setCreateCaseStatus(null);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader 
         title="Investigation" 
-        description="Interact with the configured Model Gateway to validate asset anomalies" 
+        description="Ask questions about your industrial knowledge base and receive grounded answers from SovereignX." 
+        actions={
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleNewTurn}
+              className="px-3.5 py-1.5 bg-white/[.05] hover:bg-white/[.1] text-console-text text-xs font-mono font-semibold rounded border border-console-line transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-console-amber"
+            >
+              New turn
+            </button>
+            <a
+              href="/reports"
+              className="px-3.5 py-1.5 bg-console-amber hover:brightness-105 text-[#0b1620] text-xs font-mono font-bold rounded shadow transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-console-amber"
+            >
+              Generate report
+            </a>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Input Panel */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col">
-            <h2 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft">
-              MODEL GATEWAY TESTING INTERFACE
-            </h2>
-            <form onSubmit={handleAnalyze} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-mono text-console-muted uppercase tracking-[0.14em] mb-2">
-                  INPUT PROMPT / INSPECTION FINDINGS
-                </label>
+        
+        {/* Main Conversation Panel */}
+        <div className="lg:col-span-2 flex flex-col space-y-4">
+          <div className="bg-console-panel border border-console-line rounded-lg p-5 backdrop-blur-[2px] min-h-[520px] flex flex-col justify-between">
+            
+            {/* Conversation Flow Area */}
+            <div className="flex-1 flex flex-col">
+              
+              {/* Empty State */}
+              {!analysisResult && !isLoading && !error && (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-4 my-auto">
+                  <div className="w-12 h-12 rounded-full bg-console-amberSoft border border-console-amber/30 flex items-center justify-center text-console-amber">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-mono font-bold uppercase tracking-[0.14em] text-console-text">
+                      ASK SOVEREIGNX
+                    </h3>
+                    <p className="text-xs text-console-muted max-w-md mx-auto mt-1.5 font-sans leading-relaxed">
+                      Ask questions about equipment, inspections, SOPs, reports, and other indexed industrial documents.
+                    </p>
+                  </div>
+                  
+                  {/* Pre-fill suggestion chips */}
+                  <div className="flex flex-wrap gap-2 justify-center max-w-lg pt-3 font-mono text-[11px]">
+                    {[
+                      "What happened to Pump P-204?",
+                      "What is the SOP bearing temperature limit?",
+                      "Summarize radial vibration limits"
+                    ].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => setPrompt(suggestion)}
+                        className="px-3 py-1.5 bg-console-inset hover:bg-white/[.05] border border-console-line rounded text-console-text2 hover:text-console-text transition-colors text-left"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Active Conversation Flow */}
+              {(analysisResult || isLoading || error) && (
+                <div className="space-y-6 flex-1 overflow-y-auto pb-4">
+                  
+                  {/* User Query Message */}
+                  <div className="flex gap-3 items-start bg-console-inset border border-console-line rounded-lg p-4 font-sans">
+                    <div className="w-7 h-7 rounded bg-console-panelSolid border border-console-line flex items-center justify-center text-[10px] font-mono font-bold text-console-muted shrink-0 mt-0.5">
+                      YOU
+                    </div>
+                    <div className="text-xs font-mono text-console-text leading-relaxed whitespace-pre-wrap">
+                      {analysisResult?.query || prompt}
+                    </div>
+                  </div>
+
+                  {/* Loading State */}
+                  {isLoading && (
+                    <div className="flex gap-3 items-start bg-console-panelSolid/60 border border-console-lineSoft rounded-lg p-4">
+                      <div className="w-7 h-7 rounded bg-console-amberSoft border border-console-amber/30 flex items-center justify-center text-console-amber text-[10px] font-mono font-bold shrink-0 mt-0.5 animate-pulse">
+                        SX
+                      </div>
+                      <div className="flex items-center gap-2 text-xs font-mono text-console-muted py-1">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-console-amber" />
+                        <span>Consulting Model Gateway and retrieving evidence...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error State */}
+                  {error && (
+                    <div className="bg-console-red/10 border border-console-red/30 rounded-lg p-4 flex gap-3 text-console-red text-xs font-mono">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold uppercase tracking-wider text-[10px]">ANALYSIS FAILED</p>
+                        <p className="text-console-text2 mt-1 font-sans">{error}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Assistant Response Card */}
+                  {analysisResult && !isLoading && (
+                    <div className="flex gap-3 items-start bg-console-panelSolid/80 border border-console-line rounded-lg p-5 font-sans space-y-4">
+                      <div className="w-7 h-7 rounded bg-console-amber text-[#0b1620] flex items-center justify-center text-[10px] font-mono font-bold shrink-0 mt-0.5">
+                        SX
+                      </div>
+                      
+                      <div className="flex-1 space-y-4">
+                        {/* Header Metadata Pill */}
+                        <div className="flex items-center justify-between border-b border-console-lineSoft pb-2.5 font-mono text-[10px]">
+                          <span className="text-console-muted font-bold tracking-widest uppercase">SOVEREIGNX ASSISTANT</span>
+                          
+                          {/* Confidence Score Pill */}
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-0.5 rounded border font-mono font-bold tabular-nums text-[10px] uppercase tracking-wider ${
+                              analysisResult.confidence >= 0.8 
+                                ? 'bg-console-greenSoft text-console-green border-console-green/30' 
+                                : analysisResult.confidence >= 0.6 
+                                  ? 'bg-console-amberSoft text-console-amber border-console-amber/30' 
+                                  : 'bg-console-panelSolid text-console-muted border-console-lineSoft'
+                            }`}>
+                              {(analysisResult.confidence * 100).toFixed(1)}% GROUNDED
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Conversational Assistant Response Text */}
+                        <div className="text-[15px] leading-[1.65] text-console-text font-normal space-y-3 font-sans">
+                          {analysisResult.answer}
+                        </div>
+
+                        {/* Cited Evidence Chips */}
+                        {analysisResult.retrieved_chunks && analysisResult.retrieved_chunks.length > 0 && (
+                          <div className="pt-3 border-t border-console-lineSoft space-y-2">
+                            <span className="text-[10px] font-mono uppercase tracking-widest text-console-muted block">EVIDENCE CITATIONS:</span>
+                            <div className="flex flex-wrap gap-2">
+                              {analysisResult.retrieved_chunks.map((chunk, idx) => (
+                                <span 
+                                  key={idx} 
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-console-amberSoft border border-console-amber/30 text-console-amber font-mono text-[11px] font-bold"
+                                >
+                                  [{chunk.filename}{chunk.page ? ` · p.${chunk.page}` : ''}]
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Human Review Escalation Banner & Secondary Action */}
+                        {analysisResult.requires_human_review && (
+                          <div className="bg-console-amberSoft border border-console-amber/40 rounded p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-console-amber font-mono text-xs">
+                            <div className="flex items-start gap-2.5">
+                              <AlertTriangle className="w-4 h-4 text-console-amber mt-0.5 shrink-0" />
+                              <div>
+                                <h4 className="text-[11px] font-bold uppercase tracking-wider">HUMAN REVIEW RECOMMENDED</h4>
+                                <p className="text-xs text-console-text2 mt-0.5 font-sans">{analysisResult.escalation_reason}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateCase(true)}
+                              disabled={createCaseStatus === 'creating'}
+                              className="px-3.5 py-1.5 bg-console-amber text-[#0b1620] hover:brightness-105 font-bold text-xs rounded shadow transition-all shrink-0 font-mono"
+                            >
+                              {createCaseStatus === 'creating' ? 'CREATING...' : 'CREATE ESCALATED CASE FILE'}
+                            </button>
+                          </div>
+                        )}
+
+                        {createCaseStatus && createCaseStatus !== 'creating' && (
+                          <div className="bg-console-greenSoft border border-console-green/30 text-console-green px-3 py-2 rounded text-xs font-mono">
+                            {createCaseStatus}
+                          </div>
+                        )}
+
+                        {/* Secondary Collapsible Reasoning Trail */}
+                        <ReasoningTrailDisclosure 
+                          toolExecutions={analysisResult.tool_executions} 
+                          modelConfig={modelConfig} 
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </div>
+
+            {/* Pinned Assistant Composer */}
+            <div className="border-t border-console-lineSoft pt-3 mt-4">
+              <form onSubmit={handleAnalyze} className="relative flex items-center bg-console-inset border border-console-line rounded-lg p-2 focus-within:border-console-amber transition-all">
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  className="w-full h-44 bg-console-inset border border-console-line rounded-md p-3 text-xs font-mono text-console-text focus:outline-none focus:border-console-amber resize-none leading-relaxed"
-                  placeholder="Enter findings description here..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAnalyze(e);
+                    }
+                  }}
+                  placeholder="Ask about your industrial knowledge base..."
+                  className="w-full bg-transparent text-xs text-console-text placeholder-console-muted font-sans outline-none resize-none h-12 p-2 leading-relaxed"
                 />
-              </div>
-
-              <div className="flex justify-end">
                 <button
                   type="submit"
-                  disabled={isLoading || !isConnected}
-                  className="flex items-center gap-2 px-4 py-2 bg-console-amber text-[#0b1620] hover:brightness-105 disabled:opacity-40 font-semibold rounded-md shadow text-xs transition-all font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-console-amber"
+                  disabled={isLoading || !isConnected || !prompt.trim()}
+                  className="ml-2 px-4 py-2 bg-console-amber hover:brightness-105 disabled:opacity-40 text-[#0b1620] font-mono font-bold text-xs rounded transition-all shrink-0 flex items-center gap-1.5"
                 >
                   {isLoading ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      ANALYZING...
-                    </>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" />
-                      ANALYZE
-                    </>
+                    <Send className="w-3.5 h-3.5" />
                   )}
+                  <span>SEND</span>
                 </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Response Panel */}
-          {(analysisResult || error || isLoading) && (
-            <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px]">
-              <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft">
-                ANALYSIS RESPONSE
-              </h3>
-
-              {isLoading && (
-                <div className="flex flex-col items-center justify-center py-10 space-y-2">
-                  <div className="w-6 h-6 border-2 border-console-amber/20 border-t-console-amber rounded-full animate-spin"></div>
-                  <p className="text-xs text-console-muted font-mono">Consulting Model Gateway...</p>
-                </div>
-              )}
-
-              {error && (
-                <div className="bg-console-red/10 border border-console-red/30 rounded p-3 flex gap-3 text-console-red text-xs font-mono">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold uppercase tracking-wider text-[10px]">ANALYSIS FAILED</p>
-                    <p className="text-console-text2 mt-1 font-sans">{error}</p>
-                  </div>
-                </div>
-              )}
-
-              {analysisResult && !isLoading && (
-                <div className="space-y-4">
-                  {/* Phase 10 Confidence-Gated Escalation Banner */}
-                  {analysisResult.requires_human_review && (
-                    <div className="bg-console-amberSoft border border-console-amber/40 rounded p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-console-amber font-mono text-xs">
-                      <div className="flex items-start gap-2.5">
-                        <AlertTriangle className="w-4 h-4 text-console-amber mt-0.5 flex-shrink-0" />
-                        <div>
-                          <h4 className="text-[11px] font-bold uppercase tracking-wider">
-                            LOW RETRIEVAL CONFIDENCE — HUMAN REVIEW RECOMMENDED
-                          </h4>
-                          <p className="text-xs text-console-text2 mt-1 font-sans">
-                            {analysisResult.escalation_reason}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCreateCase(true)}
-                        disabled={createCaseStatus === 'creating'}
-                        className="px-3 py-1.5 bg-console-amber text-[#0b1620] hover:brightness-105 font-bold text-xs rounded shadow transition-all flex-shrink-0 font-mono"
-                      >
-                        {createCaseStatus === 'creating' ? 'CREATING...' : 'CREATE ESCALATED CASE FILE'}
-                      </button>
-                    </div>
-                  )}
-
-                  {createCaseStatus && createCaseStatus !== 'creating' && (
-                    <div className="bg-console-greenSoft border border-console-green/30 text-console-green px-3 py-2 rounded text-xs font-mono">
-                      {createCaseStatus}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-console-inset p-3.5 border border-console-line rounded">
-                      <p className="text-[10px] text-console-muted font-mono uppercase tracking-[0.14em]">FINDING</p>
-                      <p className="text-xs text-console-text mt-1 font-medium">{analysisResult.finding}</p>
-                    </div>
-
-                    <div className="bg-console-inset p-3.5 border border-console-line rounded">
-                      <p className="text-[10px] text-console-muted font-mono uppercase tracking-[0.14em]">SOP REFERENCE</p>
-                      <p className="text-xs text-console-amber mt-1 font-mono font-bold">{analysisResult.sop_reference}</p>
-                    </div>
-
-                    <div className="bg-console-inset p-3.5 border border-console-line rounded font-mono">
-                      <p className="text-[10px] text-console-muted uppercase tracking-[0.14em]">CONFIDENCE METRIC</p>
-                      <div className="flex items-center gap-3 mt-2">
-                        <div className="w-full bg-console-panelSolid h-1.5 rounded overflow-hidden">
-                          <div 
-                            className={`${analysisResult.requires_human_review ? 'bg-console-amber' : 'bg-console-green'} h-full rounded transition-all duration-300`} 
-                            style={{ width: `${analysisResult.confidence * 100}%` }}
-                          />
-                        </div>
-                        <span className={`text-xs font-bold tabular-nums ${analysisResult.requires_human_review ? 'text-console-amber' : 'text-console-green'}`}>
-                          {(analysisResult.confidence * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="bg-console-inset p-3.5 border border-console-line rounded font-mono">
-                      <p className="text-[10px] text-console-muted uppercase tracking-[0.14em]">VERIFICATION STATUS</p>
-                      <div className="flex items-center gap-2 text-xs font-medium mt-2">
-                        {analysisResult.requires_human_review ? (
-                          <span className="text-console-amber flex items-center gap-1.5 font-bold">
-                            <AlertTriangle className="w-4 h-4 text-console-amber" /> ESCALATION: HUMAN REVIEW REQ
-                          </span>
-                        ) : (
-                          <span className="text-console-green flex items-center gap-1.5 font-bold">
-                            <CheckCircle className="w-4 h-4 text-console-green" /> READY FOR AUDIT REVIEW
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-console-inset p-3.5 border border-console-line rounded">
-                    <p className="text-[10px] text-console-muted font-mono uppercase tracking-[0.14em]">RECOMMENDED ACTION</p>
-                    <p className="text-xs text-console-text mt-1 font-medium">{analysisResult.recommended_action}</p>
-                  </div>
-
-                  <div className="border-t border-console-lineSoft pt-3 flex justify-between items-center text-[10px] text-console-muted font-mono">
-                    <span>GATEWAY PROVIDER: {modelConfig.provider.toUpperCase()}</span>
-                    <span>MODEL: {modelConfig.model.toUpperCase()}</span>
-                  </div>
-                </div>
-              )}
+              </form>
             </div>
-          )}
+
+          </div>
         </div>
 
-        {/* Sidebar Info/Instruction Card */}
+        {/* Right Rail: Evidence & RAG Retrieval */}
         <div className="space-y-6">
-          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] space-y-3 font-mono">
-            <h3 className="text-[11px] tracking-[0.14em] text-console-muted uppercase pb-2 border-b border-console-lineSoft">GATEWAY CONTEXT</h3>
-            <div className="text-xs space-y-2">
-              <div className="flex justify-between border-b border-console-lineSoft pb-1.5">
-                <span className="text-console-muted uppercase text-[10px]">PROVIDER:</span>
-                <span className="text-console-text font-bold uppercase">{modelConfig.provider}</span>
-              </div>
-              <div className="flex justify-between border-b border-console-lineSoft pb-1.5">
-                <span className="text-console-muted uppercase text-[10px]">MODEL NAME:</span>
-                <span className="text-console-text font-bold">{modelConfig.model || 'mock'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-console-muted uppercase text-[10px]">STATUS:</span>
-                <span className={`font-bold uppercase ${modelConfig.status === 'available' ? 'text-console-green' : 'text-console-amber'}`}>
-                  {modelConfig.status}
-                </span>
-              </div>
-            </div>
-            <p className="text-xs text-console-text2 font-sans leading-relaxed pt-2 border-t border-console-lineSoft">
-              This terminal queries the active model gateway. When set to <code className="bg-console-inset px-1 py-0.5 rounded text-console-amber font-mono">mock</code>, response is populated with deterministic Phase 1 outputs.
-            </p>
-          </div>
-
-          {/* Local RAG Retrieval Card */}
           <InvestigationRagCard 
             onPastePrompt={(text) => setPrompt(prev => prev ? `${prev}\n\nEvidence Context:\n${text}` : `Evidence Context:\n${text}`)} 
           />
         </div>
 
       </div>
+    </div>
+  );
+}
+
+function ReasoningTrailDisclosure({ toolExecutions, modelConfig }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const traceSteps = ["ANALYSIS_AGENT", "RETRIEVAL_RAG", "REPORT_GEN"];
+
+  return (
+    <div className="border-t border-console-lineSoft pt-3 font-mono text-[10px]">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-1.5 text-console-muted hover:text-console-text transition-colors uppercase tracking-widest font-bold"
+      >
+        <span>{isOpen ? '▼ HIDE REASONING TRAIL' : '▶ SHOW REASONING TRAIL'}</span>
+        <span className="text-console-muted">({traceSteps.join(' › ')})</span>
+      </button>
+      
+      {isOpen && (
+        <div className="mt-2.5 p-3 bg-console-inset border border-console-line rounded space-y-2 text-console-text2 font-mono">
+          <div className="flex justify-between text-[9px] text-console-muted border-b border-console-lineSoft pb-1">
+            <span>GATEWAY: {modelConfig?.provider?.toUpperCase() || 'OLLAMA'}</span>
+            <span>MODEL: {modelConfig?.model?.toUpperCase() || 'QWEN2.5:7B'}</span>
+          </div>
+          {toolExecutions && toolExecutions.length > 0 ? (
+            <div className="space-y-1">
+              <span className="text-console-muted block">DETERMINISTIC TOOL EXECUTIONS:</span>
+              {toolExecutions.map((tool, idx) => (
+                <div key={idx} className="text-console-amber bg-console-panelSolid p-1.5 rounded border border-console-lineSoft">
+                  <span className="font-bold">{tool.tool_name}</span>: {tool.outputs?.summary || JSON.stringify(tool.outputs)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-console-muted italic">No deterministic tool executions required for this query.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -343,15 +428,19 @@ function InvestigationRagCard({ onPastePrompt }) {
 
   return (
     <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] space-y-3 font-mono">
-      <h3 className="text-[11px] tracking-[0.14em] text-console-muted uppercase pb-2 border-b border-console-lineSoft">
-        LOCAL RAG EVIDENCE SEARCH
-      </h3>
+      <div className="flex items-center gap-2 pb-2 border-b border-console-lineSoft">
+        <FileText className="w-3.5 h-3.5 text-console-amber" />
+        <h3 className="text-[11px] tracking-[0.14em] text-console-muted uppercase">
+          EVIDENCE LEDGER
+        </h3>
+      </div>
+      
       <form onSubmit={handleSearch} className="flex gap-2">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Query local KB..."
+          placeholder="Search evidence..."
           className="flex-1 bg-console-inset border border-console-line focus:border-console-amber rounded px-2.5 py-1 text-xs text-console-text outline-none placeholder-console-muted font-sans"
         />
         <button
@@ -365,7 +454,7 @@ function InvestigationRagCard({ onPastePrompt }) {
 
       {loading && (
         <div className="text-[10px] text-console-muted font-mono animate-pulse">
-          Retrieving relevance chunks...
+          Retrieving evidence chunks...
         </div>
       )}
 
@@ -384,15 +473,20 @@ function InvestigationRagCard({ onPastePrompt }) {
       )}
 
       {results.length > 0 && (
-        <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+        <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
           <div className="text-[9px] font-mono text-console-muted uppercase tracking-widest border-b border-console-lineSoft pb-1">
             RETRIEVED EVIDENCE CHUNKS
           </div>
-          {results.map((res) => {
+          {results.map((res, idx) => {
             const scorePercent = Number((res.score * 100).toFixed(0));
             const scoreColor = getScoreBandColor(scorePercent);
             return (
-              <div key={res.chunk_id} className="bg-console-inset border border-console-line p-2.5 rounded text-[10px] font-mono space-y-1.5">
+              <div 
+                key={res.chunk_id} 
+                className={`bg-console-inset border border-console-line p-2.5 rounded text-[10px] font-mono space-y-1.5 ${
+                  idx === 0 ? 'border-l-2 border-l-console-amber' : ''
+                }`}
+              >
                 <div className="flex justify-between text-[9px] text-console-muted border-b border-console-lineSoft pb-1">
                   <span className="text-console-amber truncate max-w-[120px]" title={res.filename}>{res.filename}</span>
                   <span className={`font-bold tabular-nums ${scoreColor}`}>{scorePercent}% MATCH</span>

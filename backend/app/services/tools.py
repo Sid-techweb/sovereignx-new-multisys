@@ -235,6 +235,16 @@ class LocalToolRegistry:
             func=convert_units
         )
 
+        # Tool 4: verify_engineering_calculation
+        self.register_tool(
+            name="verify_engineering_calculation",
+            description="Verifies an engineering scalar formula calculation against user-provided or extracted values using a safe AST evaluator and strict verification gate.",
+            parameters={
+                "text_input": ParameterDefinition(type="str", description="The raw free-text calculation prompt or formula input string")
+            },
+            func=verify_engineering_calculation
+        )
+
 
 # Default tool implementation functions
 
@@ -369,6 +379,11 @@ def convert_units(value: float, from_unit: str, to_unit: str) -> Dict[str, Any]:
         }
         
     raise ValueError(f"Incompatible units or unsupported conversion: from '{from_unit}' to '{to_unit}'")
+
+
+def verify_engineering_calculation(text_input: str) -> Dict[str, Any]:
+    from app.tools.calculation_verifier import extract_and_verify_calculation
+    return extract_and_verify_calculation(text_input)
 
 
 # Singleton instance
