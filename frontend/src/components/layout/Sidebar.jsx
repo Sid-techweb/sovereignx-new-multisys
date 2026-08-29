@@ -11,7 +11,7 @@ import {
   Settings 
 } from 'lucide-react';
 
-export default function Sidebar({ currentPage, onPageChange }) {
+export default function Sidebar({ currentPage, onPageChange, openCasesCount = 0 }) {
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'cases', label: 'Cases', icon: Briefcase },
@@ -57,11 +57,11 @@ export default function Sidebar({ currentPage, onPageChange }) {
                     <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-[#0b1620]' : 'text-console-muted'}`} />
                     <span>{item.label}</span>
                   </div>
-                  {item.id === 'cases' && (
+                  {item.id === 'cases' && openCasesCount > 0 && (
                     <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
                       isActive ? 'bg-[#0b1620]/20 text-[#0b1620]' : 'bg-console-amberSoft text-console-amber border border-console-amber/30'
                     }`}>
-                      2
+                      {openCasesCount}
                     </span>
                   )}
                 </button>

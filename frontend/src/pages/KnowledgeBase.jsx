@@ -10,6 +10,7 @@ import {
   FileText, 
   Play, 
   AlertTriangle,
+  CheckCircle,
   FolderOpen,
   Info
 } from 'lucide-react';
@@ -31,6 +32,8 @@ export default function KnowledgeBase() {
   const [docs, setDocs] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [indexingId, setIndexingId] = useState(null);
+  const [indexMessage, setIndexMessage] = useState(null);
+  const [indexError, setIndexError] = useState(null);
 
   // Search state
   const [query, setQuery] = useState('');
@@ -78,6 +81,8 @@ export default function KnowledgeBase() {
 
   const handleIndexDocument = async (docId) => {
     setIndexingId(docId);
+    setIndexMessage(null);
+    setIndexError(null);
     try {
       const response = await fetch(`${API_BASE}/knowledge-base/index/${docId}`, {
         method: 'POST',
@@ -89,10 +94,10 @@ export default function KnowledgeBase() {
         throw new Error(errData.detail || 'Indexing failed.');
       }
 
-      alert('Document indexed successfully!');
+      setIndexMessage('Document indexed successfully!');
       fetchData(); // Refresh stats and list
     } catch (err) {
-      alert(`Indexing error: ${err.message}`);
+      setIndexError(err.message || 'Indexing failed.');
     } finally {
       setIndexingId(null);
     }
@@ -197,10 +202,30 @@ export default function KnowledgeBase() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Repository Registry Indexer */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col">
-            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft">
+          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col space-y-3">
+            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 border-b border-console-lineSoft">
               INDEXING COORDINATOR
             </h3>
+
+            {indexMessage && (
+              <div className="p-2.5 bg-console-green/10 border border-console-green/30 rounded flex items-center justify-between text-xs text-console-green font-mono">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5 text-console-green flex-shrink-0" />
+                  <span>{indexMessage}</span>
+                </div>
+                <button onClick={() => setIndexMessage(null)} className="text-console-muted hover:text-console-text">×</button>
+              </div>
+            )}
+
+            {indexError && (
+              <div className="p-2.5 bg-console-red/10 border border-console-red/30 rounded flex items-center justify-between text-xs text-console-red font-mono">
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-console-red flex-shrink-0" />
+                  <span>{indexError}</span>
+                </div>
+                <button onClick={() => setIndexError(null)} className="text-console-muted hover:text-console-text">×</button>
+              </div>
+            )}
             
             {loadingDocs ? (
               <div className="flex flex-col items-center justify-center py-10">
@@ -313,7 +338,7 @@ export default function KnowledgeBase() {
               {(!searchResults || (searchResults.results && searchResults.results.length > 0)) && (
                 <div className="flex items-center gap-1.5 text-[10px] font-mono text-console-muted bg-console-inset px-2 py-1 rounded border border-console-line">
                   <Info className="w-3.5 h-3.5 text-console-muted" />
-                  <span>GROUNDED PASSAGES · NO LLM HALLUCINATIONS</span>
+                  <span>GROUNDED PASSAGES · DOCUMENT-BACKED</span>
                 </div>
               )}
             </div>

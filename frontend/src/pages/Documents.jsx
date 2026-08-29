@@ -22,6 +22,7 @@ export default function Documents({ documents = [], loading = false, onRefresh }
   const [uploadError, setUploadError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [processingId, setProcessingId] = useState(null);
+  const [processingError, setProcessingError] = useState(null);
   
   // Detail Viewer State
   const [selectedDoc, setSelectedDoc] = useState(null);
@@ -39,6 +40,7 @@ export default function Documents({ documents = [], loading = false, onRefresh }
     setUploading(true);
     setUploadError(null);
     setUploadSuccess(false);
+    setProcessingError(null);
 
     // Client-side validations
     const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
@@ -80,6 +82,7 @@ export default function Documents({ documents = [], loading = false, onRefresh }
 
   const handleProcess = async (docId) => {
     setProcessingId(docId);
+    setProcessingError(null);
     try {
       const response = await fetch(`${API_BASE}/documents/${docId}/process`, {
         method: 'POST',
@@ -98,7 +101,7 @@ export default function Documents({ documents = [], loading = false, onRefresh }
         handleViewDetails(docId);
       }
     } catch (err) {
-      alert(`Processing error: ${err.message}`);
+      setProcessingError(err.message || 'Processing failed.');
     } finally {
       setProcessingId(null);
     }
@@ -211,10 +214,20 @@ export default function Documents({ documents = [], loading = false, onRefresh }
           </div>
 
           {/* Document Table */}
-          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col">
-            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft">
+          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col space-y-3">
+            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 border-b border-console-lineSoft">
               INGESTED REPOSITORY LIBRARY
             </h3>
+
+            {processingError && (
+              <div className="p-3 bg-console-red/10 border border-console-red/30 rounded flex items-center justify-between text-xs text-console-red font-mono">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-console-red flex-shrink-0" />
+                  <span>Processing Error: {processingError}</span>
+                </div>
+                <button onClick={() => setProcessingError(null)} className="text-console-muted hover:text-console-text">×</button>
+              </div>
+            )}
             
             {loading ? (
               <div className="flex flex-col items-center justify-center py-10">

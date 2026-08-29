@@ -2,11 +2,11 @@ import React from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
-export default function AppLayout({ children, currentPage, onPageChange, healthStatus, isConnected, modelConfig }) {
+export default function AppLayout({ children, currentPage, onPageChange, healthStatus, isConnected, modelConfig, openCasesCount }) {
   return (
     <div className="app-bg flex h-screen overflow-hidden font-sans text-console-text">
       {/* Persistent Sidebar */}
-      <Sidebar currentPage={currentPage} onPageChange={onPageChange} />
+      <Sidebar currentPage={currentPage} onPageChange={onPageChange} openCasesCount={openCasesCount} />
 
       {/* Main Layout Container */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10 bg-transparent">

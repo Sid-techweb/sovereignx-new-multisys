@@ -1,8 +1,36 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShieldCheck, ServerCrash } from 'lucide-react';
 import StatusBadge from '../common/StatusBadge';
 
+const API_BASE = 'http://127.0.0.1:8000';
+const API_KEY = import.meta.env.VITE_API_KEY || 'sovereignx-demo-key-2026';
+
 export default function SystemStatus({ modelConfig, isConnected }) {
+  const [kbStatus, setKbStatus] = useState('Checking...');
+  const [kbDetail, setKbDetail] = useState('Querying vector index...');
+
+  useEffect(() => {
+    const fetchKbStatus = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/knowledge-base`, {
+          headers: { 'X-API-Key': API_KEY }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setKbStatus('Operational');
+          setKbDetail(`${data.documents_indexed || 0} docs / ${data.chunks_indexed || 0} chunks indexed`);
+        } else {
+          setKbStatus('Offline');
+          setKbDetail('Index unavailable');
+        }
+      } catch (err) {
+        setKbStatus('Offline');
+        setKbDetail('Failed to reach RAG server');
+      }
+    };
+    fetchKbStatus();
+  }, [isConnected]);
+
   const provider = modelConfig.provider || 'mock';
   const providerLabel = provider.toLowerCase() === 'mock' 
     ? 'Mock Provider' 
@@ -16,18 +44,8 @@ export default function SystemStatus({ modelConfig, isConnected }) {
     },
     {
       name: 'Knowledge Base',
-      status: 'Ready',
-      detail: 'Semantic search indices loaded'
-    },
-    {
-      name: 'Document Pipeline',
-      status: 'Ready',
-      detail: 'OCR parser and directory listener running'
-    },
-    {
-      name: 'Agent Runtime',
-      status: 'Ready',
-      detail: 'Workflow coordinator initialized'
+      status: isConnected ? kbStatus : 'Offline',
+      detail: isConnected ? kbDetail : 'Backend server disconnected'
     }
   ];
 

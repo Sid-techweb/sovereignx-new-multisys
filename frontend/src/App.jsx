@@ -18,9 +18,11 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [modelConfig, setModelConfig] = useState({ provider: 'Unknown', model: 'Unknown', status: 'Unknown' });
   const [documents, setDocuments] = useState([]);
+  const [cases, setCases] = useState([]);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [isLoadingCases, setIsLoadingCases] = useState(false);
 
-  // Poll backend health and fetch configuration/documents
+  // Poll backend health and fetch configuration, documents, and cases
   const fetchData = async () => {
     try {
       // 1. Health Check (Public endpoint)
@@ -50,15 +52,31 @@ export default function App() {
       });
       if (docsRes.ok) {
         const docsData = await docsRes.json();
-        setDocuments(docsData);
+        setDocuments(Array.isArray(docsData) ? docsData : []);
+      } else {
+        setDocuments([]);
+      }
+
+      // 4. Cases (Protected endpoint)
+      setIsLoadingCases(true);
+      const casesRes = await fetch(`${API_BASE}/cases`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
+      if (casesRes.ok) {
+        const casesData = await casesRes.json();
+        setCases(Array.isArray(casesData) ? casesData : []);
+      } else {
+        setCases([]);
       }
     } catch (err) {
       setHealthStatus('Disconnected');
       setIsConnected(false);
       setModelConfig({ provider: 'N/A', model: 'N/A', status: 'Offline' });
       setDocuments([]);
+      setCases([]);
     } finally {
       setIsLoadingDocs(false);
+      setIsLoadingCases(false);
     }
   };
 
@@ -68,6 +86,13 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const safeCases = Array.isArray(cases) ? cases : [];
+  const safeDocuments = Array.isArray(documents) ? documents : [];
+
+  const openCasesCount = safeCases.filter(
+    c => c && (c.status || '').toLowerCase() !== 'closed' && (c.status || '').toLowerCase() !== 'resolved'
+  ).length;
+
   const renderPage = () => {
     switch (currentPage) {
       case 'overview':
@@ -75,13 +100,15 @@ export default function App() {
           <Overview 
             modelConfig={modelConfig} 
             isConnected={isConnected} 
-            documentsCount={documents.length} 
+            documentsCount={safeDocuments.length} 
+            cases={safeCases}
+            loadingCases={isLoadingCases}
           />
         );
       case 'cases':
         return <Cases />;
       case 'documents':
-        return <Documents documents={documents} loading={isLoadingDocs} onRefresh={fetchData} />;
+        return <Documents documents={safeDocuments} loading={isLoadingDocs} onRefresh={fetchData} />;
       case 'investigation':
         return <Investigation modelConfig={modelConfig} isConnected={isConnected} />;
       case 'knowledge-base':
@@ -97,7 +124,9 @@ export default function App() {
           <Overview 
             modelConfig={modelConfig} 
             isConnected={isConnected} 
-            documentsCount={documents.length} 
+            documentsCount={safeDocuments.length} 
+            cases={safeCases}
+            loadingCases={isLoadingCases}
           />
         );
     }
@@ -110,6 +139,7 @@ export default function App() {
       healthStatus={healthStatus}
       isConnected={isConnected}
       modelConfig={modelConfig}
+      openCasesCount={openCasesCount}
     >
       {renderPage()}
     </AppLayout>
