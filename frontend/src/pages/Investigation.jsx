@@ -3,6 +3,7 @@ import PageHeader from '../components/common/PageHeader';
 import { Send, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
+const API_KEY = import.meta.env.VITE_API_KEY || 'sovereignx-demo-key-2026';
 
 export default function Investigation({ modelConfig, isConnected }) {
   const [prompt, setPrompt] = useState(
@@ -23,17 +24,23 @@ export default function Investigation({ modelConfig, isConnected }) {
     try {
       const response = await fetch(`${API_BASE}/agents/investigate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY
+        },
         body: JSON.stringify({ query: prompt })
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.detail || `Server returned status ${response.status}`);
-      }
-
-      const data = await response.json();
+      }      const data = await response.json();
       const formattedResult = {
+        raw_data: data,
+        query: data.query,
+        answer: data.answer,
+        retrieved_chunks: data.retrieved_chunks,
+        tool_executions: data.tool_executions,
         finding: data.answer,
         sop_reference: data.retrieved_chunks
           ? data.retrieved_chunks
@@ -42,6 +49,8 @@ export default function Investigation({ modelConfig, isConnected }) {
               .join(', ')
           : 'N/A',
         confidence: data.confidence,
+        requires_human_review: data.requires_human_review || (data.confidence < 0.7000),
+        escalation_reason: data.escalation_reason || `Retrieval confidence (${(data.confidence * 100).toFixed(1)}%) is below safety threshold (70.0%) — recommend manual verification before acting on this finding.`,
         recommended_action: data.tool_executions && data.tool_executions.length > 0 
           ? data.tool_executions.map(t => t.outputs?.summary).filter(Boolean).join('\n')
           : 'Review RAG evidence citations above.'
@@ -51,6 +60,37 @@ export default function Investigation({ modelConfig, isConnected }) {
       setError(err.message || 'An error occurred during analysis');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const [createCaseStatus, setCreateCaseStatus] = useState(null);
+
+  const handleCreateCase = async (isEscalated = false) => {
+    if (!analysisResult) return;
+    setCreateCaseStatus('creating');
+    try {
+      const res = await fetch(`${API_BASE}/cases`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY
+        },
+        body: JSON.stringify({
+          query: analysisResult.query,
+          answer: analysisResult.answer,
+          confidence: analysisResult.confidence,
+          requires_human_review: isEscalated || analysisResult.requires_human_review,
+          escalation_reason: analysisResult.escalation_reason,
+          retrieved_chunks: analysisResult.retrieved_chunks || [],
+          tool_executions: analysisResult.tool_executions || []
+        })
+      });
+      if (!res.ok) throw new Error('Failed to create case');
+      const caseData = await res.json();
+      setCreateCaseStatus(`Case ${caseData.case_id} created successfully!`);
+      setTimeout(() => setCreateCaseStatus(null), 5000);
+    } catch (err) {
+      setCreateCaseStatus(`Error creating case: ${err.message}`);
     }
   };
 
@@ -85,7 +125,7 @@ export default function Investigation({ modelConfig, isConnected }) {
                 <button
                   type="submit"
                   disabled={isLoading || !isConnected}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-850 disabled:text-slate-600 font-medium rounded-lg shadow-lg text-sm text-white transition-all"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-855 disabled:text-slate-600 font-medium rounded-lg shadow-lg text-sm text-white transition-all"
                 >
                   {isLoading ? (
                     <>
@@ -129,36 +169,75 @@ export default function Investigation({ modelConfig, isConnected }) {
 
               {analysisResult && !isLoading && (
                 <div className="space-y-4">
+                  {/* Phase 10 Confidence-Gated Escalation Banner */}
+                  {analysisResult.requires_human_review && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fadeIn">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
+                            ⚠️ Low Retrieval Confidence — Human Review Recommended
+                          </h4>
+                          <p className="text-xs text-amber-200/80 mt-1 font-sans">
+                            {analysisResult.escalation_reason}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCreateCase(true)}
+                        disabled={createCaseStatus === 'creating'}
+                        className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg shadow transition-colors flex-shrink-0 font-mono"
+                      >
+                        {createCaseStatus === 'creating' ? 'Creating...' : 'Create Escalated Case File'}
+                      </button>
+                    </div>
+                  )}
+
+                  {createCaseStatus && createCaseStatus !== 'creating' && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-2.5 rounded-lg text-xs font-mono">
+                      {createCaseStatus}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-slate-950/60 p-4 border border-slate-850 rounded-lg">
+                    <div className="bg-slate-950/60 p-4 border border-slate-855 rounded-lg">
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest font-mono">Finding</p>
                       <p className="text-sm text-slate-200 mt-1.5 font-medium">{analysisResult.finding}</p>
                     </div>
 
-                    <div className="bg-slate-950/60 p-4 border border-slate-850 rounded-lg">
+                    <div className="bg-slate-950/60 p-4 border border-slate-855 rounded-lg">
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest font-mono">SOP Reference</p>
                       <p className="text-sm text-sky-400 mt-1.5 font-mono font-bold">{analysisResult.sop_reference}</p>
                     </div>
 
-                    <div className="bg-slate-950/60 p-4 border border-slate-850 rounded-lg">
+                    <div className="bg-slate-950/60 p-4 border border-slate-855 rounded-lg">
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest font-mono">Confidence Metric</p>
                       <div className="flex items-center gap-3 mt-2">
                         <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
                           <div 
-                            className="bg-sky-500 h-full rounded-full transition-all duration-300" 
+                            className={`${analysisResult.requires_human_review ? 'bg-amber-500' : 'bg-sky-500'} h-full rounded-full transition-all duration-300`} 
                             style={{ width: `${analysisResult.confidence * 100}%` }}
                           />
                         </div>
-                        <span className="text-xs font-bold text-sky-400 font-mono">
-                          {Math.round(analysisResult.confidence * 100)}%
+                        <span className={`text-xs font-bold font-mono ${analysisResult.requires_human_review ? 'text-amber-400' : 'text-sky-400'}`}>
+                          {(analysisResult.confidence * 100).toFixed(1)}%
                         </span>
                       </div>
                     </div>
 
-                    <div className="bg-slate-950/60 p-4 border border-slate-850 rounded-lg">
+                    <div className="bg-slate-950/60 p-4 border border-slate-855 rounded-lg">
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest font-mono">Verification Status</p>
-                      <div className="flex items-center gap-2 text-emerald-400 text-xs font-medium mt-2 font-mono">
-                        <CheckCircle className="w-4 h-4" /> READY FOR AUDIT REVIEW
+                      <div className="flex items-center gap-2 text-xs font-medium mt-2 font-mono">
+                        {analysisResult.requires_human_review ? (
+                          <span className="text-amber-400 flex items-center gap-1.5 font-bold">
+                            <AlertTriangle className="w-4 h-4" /> ESCALATION: HUMAN REVIEW REQ
+                          </span>
+                        ) : (
+                          <span className="text-emerald-400 flex items-center gap-1.5 font-bold">
+                            <CheckCircle className="w-4 h-4" /> READY FOR AUDIT REVIEW
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

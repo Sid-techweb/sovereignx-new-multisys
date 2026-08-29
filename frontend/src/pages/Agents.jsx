@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
+const API_KEY = import.meta.env.VITE_API_KEY || 'sovereignx-demo-key-2026';
 
 export default function Agents() {
   const [tools, setTools] = useState([]);
@@ -37,7 +38,9 @@ export default function Agents() {
   const fetchTools = async () => {
     setIsLoadingTools(true);
     try {
-      const response = await fetch(`${API_BASE}/tools`);
+      const response = await fetch(`${API_BASE}/tools`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
       if (response.ok) {
         const data = await response.json();
         setTools(data);
@@ -56,7 +59,9 @@ export default function Agents() {
   const fetchLogs = async () => {
     setIsLoadingLogs(true);
     try {
-      const response = await fetch(`${API_BASE}/tools/logs?limit=30`);
+      const response = await fetch(`${API_BASE}/tools/logs?limit=30`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
       if (response.ok) {
         const data = await response.json();
         setExecutionLogs(data);
@@ -148,7 +153,10 @@ export default function Agents() {
 
       const response = await fetch(`${API_BASE}/tools/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY
+        },
         body: JSON.stringify({
           tool_name: selectedTool.name,
           arguments: processedArgs

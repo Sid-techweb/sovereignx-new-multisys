@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
+const API_KEY = import.meta.env.VITE_API_KEY || 'sovereignx-demo-key-2026';
 
 export default function Documents({ documents = [], loading = false, onRefresh }) {
   const [uploading, setUploading] = useState(false);
@@ -61,6 +62,7 @@ export default function Documents({ documents = [], loading = false, onRefresh }
     try {
       const response = await fetch(`${API_BASE}/documents/upload`, {
         method: 'POST',
+        headers: { 'X-API-Key': API_KEY },
         body: formData
       });
 
@@ -82,7 +84,8 @@ export default function Documents({ documents = [], loading = false, onRefresh }
     setProcessingId(docId);
     try {
       const response = await fetch(`${API_BASE}/documents/${docId}/process`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'X-API-Key': API_KEY }
       });
 
       if (!response.ok) {
@@ -113,7 +116,9 @@ export default function Documents({ documents = [], loading = false, onRefresh }
     setSelectedDoc(meta);
 
     try {
-      const response = await fetch(`${API_BASE}/documents/${docId}/content`);
+      const response = await fetch(`${API_BASE}/documents/${docId}/content`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
       if (!response.ok) {
         throw new Error('Failed to load extracted document details.');
       }

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 25
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/sovereignx"
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    API_KEY: str = "sovereignx-demo-key-2026"
     RAG_CHUNK_SIZE: int = 800
     RAG_CHUNK_OVERLAP: int = 120
     RAG_MIN_RELEVANCE_PERCENT: float = 60.0

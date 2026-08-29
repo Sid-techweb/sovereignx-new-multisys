@@ -190,10 +190,13 @@ async def process_document(document_id: str):
             created_at=meta["uploaded_at"]
         )
         
-        # Save extracted document content separately
-        extracted_dir = storage.base_path / "extracted"
+        # Save extracted document content separately using sanitized path
+        safe_doc_id = os.path.basename(document_id)
+        extracted_dir = (storage.base_path / "extracted").resolve()
         extracted_dir.mkdir(parents=True, exist_ok=True)
-        extracted_file = extracted_dir / f"{document_id}.json"
+        extracted_file = (extracted_dir / f"{safe_doc_id}.json").resolve()
+        if not extracted_file.is_relative_to(extracted_dir):
+            raise HTTPException(status_code=400, detail="Path traversal attempt detected.")
         
         with open(extracted_file, "w", encoding="utf-8") as f:
             f.write(extracted_doc.model_dump_json())
@@ -247,7 +250,11 @@ async def get_document_content(document_id: str):
             detail=f"Document with ID {document_id} not found."
         )
         
-    extracted_file = storage.base_path / "extracted" / f"{document_id}.json"
+    safe_doc_id = os.path.basename(document_id)
+    extracted_dir = (storage.base_path / "extracted").resolve()
+    extracted_file = (extracted_dir / f"{safe_doc_id}.json").resolve()
+    if not extracted_file.is_relative_to(extracted_dir):
+        raise HTTPException(status_code=400, detail="Path traversal attempt detected.")
     if not extracted_file.exists():
         # Return empty content with current processing state if not processed yet
         return ExtractedDocument(

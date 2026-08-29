@@ -10,7 +10,7 @@ from app.gateway.exceptions import UnsupportedProviderError, OllamaUnavailableEr
 class TestGatewayArchitecture(unittest.TestCase):
     def setUp(self):
         # Ensure we run tests using the FastAPI test client
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
 
     def test_mock_provider_startup(self):
         """Test 1 — Mock provider starts successfully"""

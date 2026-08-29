@@ -48,7 +48,12 @@ class BGEM3EmbeddingProvider(EmbeddingProvider):
             from sentence_transformers.sentence_transformer.modules import Transformer, Pooling
             
             # Enforce local_files_only=True to prevent network calls in air-gapped environment
-            transformer = Transformer(self.model_name, model_kwargs={'local_files_only': True})
+            transformer = Transformer(
+                self.model_name,
+                model_kwargs={'local_files_only': True},
+                processor_kwargs={'local_files_only': True},
+                config_kwargs={'local_files_only': True}
+            )
             try:
                 emb_dim = transformer.get_embedding_dimension()
             except AttributeError:

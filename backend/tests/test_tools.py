@@ -21,7 +21,7 @@ class TestLocalTools(unittest.TestCase):
         tool_registry.log_path = Path(self.test_dir) / "logs" / "tool_executions.jsonl"
         tool_registry.log_path.parent.mkdir(parents=True, exist_ok=True)
         
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
 
     def tearDown(self):
         self.storage_patcher.stop()

@@ -2,6 +2,7 @@ import React from 'react';
 import PageHeader from '../components/common/PageHeader';
 import MetricCard from '../components/dashboard/MetricCard';
 import SystemStatus from '../components/dashboard/SystemStatus';
+import SovereigntyPanel from '../components/dashboard/SovereigntyPanel';
 import RecentInvestigations from '../components/dashboard/RecentInvestigations';
 import ActivityFeed from '../components/dashboard/ActivityFeed';
 import { 
@@ -57,12 +58,13 @@ export default function Overview({ modelConfig, isConnected, documentsCount }) {
           <RecentInvestigations />
         </div>
 
-        {/* Right Column: System Status & Activity Feed */}
+        {/* Right Column: System Status, Sovereignty Panel & Activity Feed */}
         <div className="space-y-6">
           <SystemStatus 
             modelConfig={modelConfig} 
             isConnected={isConnected} 
           />
+          <SovereigntyPanel />
           <ActivityFeed />
         </div>
       </div>

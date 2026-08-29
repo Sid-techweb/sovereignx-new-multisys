@@ -102,13 +102,24 @@ async def investigate(
             latency_ms=duration_ms
         )
 
+        confidence_val = float(report.get("confidence", 0.0))
+        ESCALATION_THRESHOLD = 0.7000
+        requires_human_review = confidence_val < ESCALATION_THRESHOLD
+        escalation_reason = (
+            f"Retrieval confidence ({confidence_val * 100:.1f}%) is below safety threshold ({ESCALATION_THRESHOLD * 100:.1f}%) — recommend manual verification before acting on this finding."
+            if requires_human_review
+            else None
+        )
+
         return AgentInvestigateResponse(
             query=report["query"],
             answer=report["answer"],
             retrieved_chunks=report["retrieved_chunks"],
             confidence=report["confidence"],
             tool_executions=report["tool_executions"],
-            metadata=report["metadata"]
+            metadata=report["metadata"],
+            requires_human_review=requires_human_review,
+            escalation_reason=escalation_reason
         )
 
     except (UnsupportedProviderError, OllamaUnavailableError, ProviderInitializationError, ProviderExecutionError):

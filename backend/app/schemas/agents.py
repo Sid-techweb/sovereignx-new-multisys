@@ -13,6 +13,8 @@ class AgentInvestigateResponse(BaseModel):
     confidence: float
     tool_executions: List[Dict[str, Any]]
     metadata: Dict[str, Any]
+    requires_human_review: bool = False
+    escalation_reason: Optional[str] = None
 
 # Phase 1/2 Placeholder Schemas
 class AgentRunRequest(BaseModel):

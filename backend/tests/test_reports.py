@@ -2,11 +2,12 @@ import io
 import unittest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.config import settings
 import docx
 
 class TestReportsApi(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
         
         # Build mock AgentInvestigateResponse input payload
         self.mock_payload = {

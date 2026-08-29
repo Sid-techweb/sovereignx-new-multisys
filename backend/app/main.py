@@ -1,9 +1,16 @@
+import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import health, models, agents, documents, rag, tools, reports
+from app.api import health, models, agents, documents, rag, tools, reports, sovereignty, cases
+from app.api.auth import verify_api_key
+from app.services.sovereignty import apply_monkeypatching
+apply_monkeypatching()
 from app.gateway.exceptions import (
     UnsupportedProviderError,
     OllamaUnavailableError,
@@ -31,7 +38,15 @@ logger = logging.getLogger("sovereignx")
 try:
     from app.database import engine, Base
     from app.rag.models import SQLDocumentChunk
+    from app.models.cases_reports import SQLCase, SQLReportRecord
+    from sqlalchemy import text
     Base.metadata.create_all(bind=engine)
+    
+    # Safe PostgreSQL column migrations for pre-existing tables
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS requires_human_review BOOLEAN NOT NULL DEFAULT FALSE;"))
+        conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS escalation_reason TEXT;"))
+        
     logger.info("PostgreSQL database tables initialized/verified successfully.")
 except Exception as e:
     logger.warning(
@@ -155,12 +170,14 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(health.router)
-app.include_router(models.router)
-app.include_router(agents.router)
-app.include_router(documents.router)
-app.include_router(rag.router)
-app.include_router(tools.router)
-app.include_router(reports.router)
+app.include_router(models.router, dependencies=[Depends(verify_api_key)])
+app.include_router(agents.router, dependencies=[Depends(verify_api_key)])
+app.include_router(documents.router, dependencies=[Depends(verify_api_key)])
+app.include_router(rag.router, dependencies=[Depends(verify_api_key)])
+app.include_router(tools.router, dependencies=[Depends(verify_api_key)])
+app.include_router(reports.router, dependencies=[Depends(verify_api_key)])
+app.include_router(cases.router, dependencies=[Depends(verify_api_key)])
+app.include_router(sovereignty.router)
 
 # Preload/initialize BGE-M3 embedding model exactly once at application startup
 @app.on_event("startup")

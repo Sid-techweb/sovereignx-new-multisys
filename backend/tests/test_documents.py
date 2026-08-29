@@ -56,7 +56,7 @@ class TestDocumentIntakeAndExtraction(unittest.TestCase):
         api_storage.__init__(self.test_dir)
         api_metadata_store.__init__(self.test_dir)
         
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
 
     def tearDown(self):
         self.storage_patcher.stop()

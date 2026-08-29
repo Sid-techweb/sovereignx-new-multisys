@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
+const API_KEY = import.meta.env.VITE_API_KEY || 'sovereignx-demo-key-2026';
 
 export default function KnowledgeBase() {
   const [stats, setStats] = useState({
@@ -46,7 +47,9 @@ export default function KnowledgeBase() {
     setLoadingDocs(true);
     try {
       // 1. Fetch RAG stats
-      const statsRes = await fetch(`${API_BASE}/knowledge-base`);
+      const statsRes = await fetch(`${API_BASE}/knowledge-base`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         setStats(statsData);
@@ -55,7 +58,9 @@ export default function KnowledgeBase() {
       }
 
       // 2. Fetch all documents
-      const docsRes = await fetch(`${API_BASE}/documents`);
+      const docsRes = await fetch(`${API_BASE}/documents`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
       if (docsRes.ok) {
         const docsData = await docsRes.json();
         setDocs(docsData);
@@ -77,7 +82,8 @@ export default function KnowledgeBase() {
     setIndexingId(docId);
     try {
       const response = await fetch(`${API_BASE}/knowledge-base/index/${docId}`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'X-API-Key': API_KEY }
       });
 
       if (!response.ok) {
@@ -105,7 +111,10 @@ export default function KnowledgeBase() {
     try {
       const response = await fetch(`${API_BASE}/knowledge-base/search`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY
+        },
         body: JSON.stringify({ query, top_k: Number(topK) })
       });
 

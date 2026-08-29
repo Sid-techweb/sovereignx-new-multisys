@@ -1,14 +1,110 @@
-import io
+import os
 import re
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+import io
+import uuid
+import logging
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse, FileResponse
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.cases_reports import SQLReportRecord
+from app.config import settings
 from app.schemas import AgentInvestigateResponse
 import docx
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from typing import List, Dict, Any, Tuple
+from datetime import datetime
 
+logger = logging.getLogger("sovereignx")
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+def get_reports_dir() -> Path:
+    base_storage = Path(settings.DOCUMENT_STORAGE_PATH).resolve()
+    # Handle if DOCUMENT_STORAGE_PATH is relative or points to files
+    parent_dir = base_storage.parent if base_storage.name == "documents" else base_storage
+    reports_dir = (parent_dir / "reports").resolve()
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    return reports_dir
+
+def save_report_record(db: Session, query: str, format_type: str, content_bytes: bytes) -> Tuple[str, str]:
+    reports_dir = get_reports_dir()
+    rep_count = db.query(SQLReportRecord).count() if db else 0
+    report_id = f"RPT-P204-00{rep_count + 1}"
+    ext = format_type.lower()
+    filename = f"{report_id}.{ext}"
+    
+    filepath = (reports_dir / filename).resolve()
+    with open(filepath, "wb") as f:
+        f.write(content_bytes)
+        
+    if db:
+        record = SQLReportRecord(
+            report_id=report_id,
+            query=query,
+            format=format_type.upper(),
+            filename=filename,
+            status="Generated"
+        )
+        db.add(record)
+        db.commit()
+        
+    return report_id, filename
+
+@router.get("", response_model=Dict[str, Any])
+async def get_reports(db: Session = Depends(get_db)):
+    """
+    Returns all generated report records and summary statistics by format.
+    """
+    try:
+        records = db.query(SQLReportRecord).order_by(SQLReportRecord.generated_at.desc()).all()
+    except Exception as e:
+        logger.warning(f"Error querying report records: {e}")
+        records = []
+        
+    report_list = []
+    for r in records:
+        report_list.append({
+            "id": r.id,
+            "report_id": r.report_id,
+            "case_id": r.case_id,
+            "query": r.query,
+            "format": r.format,
+            "filename": r.filename,
+            "status": r.status,
+            "generated_at": r.generated_at.isoformat() if isinstance(r.generated_at, datetime) else str(r.generated_at)
+        })
+        
+    summary = {
+        "total": len(report_list),
+        "docx": sum(1 for r in report_list if r["format"] == "DOCX"),
+        "pptx": sum(1 for r in report_list if r["format"] == "PPTX"),
+        "xlsx": sum(1 for r in report_list if r["format"] == "XLSX")
+    }
+    
+    return {
+        "summary": summary,
+        "reports": report_list
+    }
+
+@router.get("/download/{filename}")
+async def download_report(filename: str):
+    """
+    Downloads a generated report file from secure reports storage with path traversal protection.
+    """
+    safe_name = os.path.basename(filename)
+    reports_dir = get_reports_dir()
+    filepath = (reports_dir / safe_name).resolve()
+    
+    if not filepath.is_relative_to(reports_dir):
+        raise HTTPException(status_code=400, detail="Path traversal attempt detected.")
+        
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail=f"Report file {safe_name} not found.")
+        
+    return FileResponse(path=filepath, filename=safe_name)
 
 def extract_unique_citations(raw_answer: str, retrieved_chunks: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
     """
@@ -78,7 +174,7 @@ def extract_inputs_from_summary(summary: str) -> str:
     return "N/A"
 
 @router.post("/generate-docx")
-async def generate_docx(request: AgentInvestigateResponse):
+async def generate_docx(request: AgentInvestigateResponse, db: Session = Depends(get_db)):
     """
     Consumes an existing /agents/investigate response directly and returns a downloadable .docx file.
     """
@@ -103,13 +199,26 @@ async def generate_docx(request: AgentInvestigateResponse):
         # 2. Metadata / Summary Section
         doc.add_heading("Investigation Summary", level=2)
         
+        # Phase 10 Low-Confidence Escalation Warning Disclaimer
+        conf_pct = round(request.confidence * 100, 1)
+        if getattr(request, "requires_human_review", False) or request.confidence < 0.7000:
+            warn_p = doc.add_paragraph()
+            warn_run = warn_p.add_run(
+                f"⚠️ WARNING: LOW RETRIEVAL CONFIDENCE ({conf_pct}%) — HUMAN REVIEW RECOMMENDED\n"
+                f"Retrieval confidence is below safety threshold (70.0%). Manual verification of cited evidence is strongly recommended before acting on findings."
+            )
+            warn_run.bold = True
+            warn_run.font.color.rgb = RGBColor(180, 80, 0)  # Amber / Dark Orange
+            warn_run.font.size = Pt(11)
+            warn_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
         p_meta = doc.add_paragraph()
         p_meta.add_run("User Query: ").bold = True
         p_meta.add_run(f"\"{request.query}\"\n")
         
         # Confidence Score with explicit label
         p_meta.add_run("Average Retrieval Relevance Confidence: ").bold = True
-        p_meta.add_run(f"{round(request.confidence * 100, 2)}%\n")
+        p_meta.add_run(f"{conf_pct}%\n")
         
         # Explanatory subtext for what confidence score represents
         metric_explanation = (
@@ -188,13 +297,21 @@ async def generate_docx(request: AgentInvestigateResponse):
                 row_cells[2].text = str(c['page']) if c['page'] is not None else "N/A"
                 row_cells[3].text = str(c['chunk_id'])
                 
-        # Return StreamingResponse of Docx
+        # Save to memory stream and disk record
         file_stream = io.BytesIO()
         doc.save(file_stream)
+        content_bytes = file_stream.getvalue()
+        
+        try:
+            _, filename = save_report_record(db, request.query, "docx", content_bytes)
+        except Exception as err:
+            logger.warning(f"Could not persist report record: {err}")
+            filename = "SovereignX_Report.docx"
+            
         file_stream.seek(0)
         
         headers = {
-            "Content-Disposition": "attachment; filename=SovereignX_Report.docx"
+            "Content-Disposition": f"attachment; filename={filename}"
         }
         return StreamingResponse(
             file_stream,
@@ -205,7 +322,7 @@ async def generate_docx(request: AgentInvestigateResponse):
         raise HTTPException(status_code=500, detail=f"Failed to generate Word document: {str(e)}")
 
 @router.post("/generate-pptx")
-async def generate_pptx(request: AgentInvestigateResponse):
+async def generate_pptx(request: AgentInvestigateResponse, db: Session = Depends(get_db)):
     """
     Consumes an existing /agents/investigate response directly and returns a downloadable .pptx file.
     """
@@ -247,13 +364,20 @@ async def generate_pptx(request: AgentInvestigateResponse):
         tf = body_shape.text_frame
         tf.word_wrap = True
         
+        # Phase 10 Escalation Warning Banner on PPTX Slide
+        if getattr(request, "requires_human_review", False) or request.confidence < 0.7000:
+            p_warn = tf.paragraphs[0]
+            p_warn.text = f"⚠️ WARNING: LOW RETRIEVAL CONFIDENCE ({round(request.confidence * 100, 1)}%) — HUMAN REVIEW RECOMMENDED"
+            set_font(p_warn.runs[0], size_pt=13, bold=True, color_rgb=PptRGBColor(217, 83, 79))
+            p_warn.space_after = Pt(10)
+        
         # Split findings text into paragraphs for presentation
         paragraphs = [p.strip() for p in formatted_answer.split('\n') if p.strip()]
         if not paragraphs:
             paragraphs = ["No grounded findings could be established."]
             
         for i, p_text in enumerate(paragraphs):
-            p = tf.add_paragraph() if i > 0 else tf.paragraphs[0]
+            p = tf.add_paragraph() if (i > 0 or (getattr(request, "requires_human_review", False) or request.confidence < 0.7000)) else tf.paragraphs[0]
             p.text = p_text
             p.font.size = Pt(14)
             
@@ -284,13 +408,21 @@ async def generate_pptx(request: AgentInvestigateResponse):
                 p.level = 0
                 p.font.size = Pt(14)
                 
-        # Save to memory stream
+        # Save to memory stream and disk record
         file_stream = io.BytesIO()
         prs.save(file_stream)
+        content_bytes = file_stream.getvalue()
+        
+        try:
+            _, filename = save_report_record(db, request.query, "pptx", content_bytes)
+        except Exception as err:
+            logger.warning(f"Could not persist report record: {err}")
+            filename = "SovereignX_Report.pptx"
+            
         file_stream.seek(0)
         
         headers = {
-            "Content-Disposition": "attachment; filename=SovereignX_Report.pptx"
+            "Content-Disposition": f"attachment; filename={filename}"
         }
         return StreamingResponse(
             file_stream,
@@ -301,7 +433,7 @@ async def generate_pptx(request: AgentInvestigateResponse):
         raise HTTPException(status_code=500, detail=f"Failed to generate PowerPoint: {str(e)}")
 
 @router.post("/generate-xlsx")
-async def generate_xlsx(request: AgentInvestigateResponse):
+async def generate_xlsx(request: AgentInvestigateResponse, db: Session = Depends(get_db)):
     """
     Consumes an existing /agents/investigate response directly and returns a downloadable .xlsx file.
     """
@@ -341,6 +473,11 @@ async def generate_xlsx(request: AgentInvestigateResponse):
         
         ws_audit["A3"] = f"Average Retrieval Relevance Confidence: {round(request.confidence * 100, 2)}%  (Note: represents average similarity of chunks used)"
         ws_audit["A3"].font = italic_font
+        
+        # Phase 10 Warning Row in Excel
+        if getattr(request, "requires_human_review", False) or request.confidence < 0.7000:
+            ws_audit["A4"] = f"⚠️ WARNING: LOW RETRIEVAL CONFIDENCE ({round(request.confidence * 100, 1)}%) — HUMAN REVIEW RECOMMENDED (Confidence < 70.0%)"
+            ws_audit["A4"].font = Font(name="Calibri", size=10, bold=True, color="C0392B")
         
         # Column headers (row 5)
         headers_list = ["Claim Text / Grounded Finding", "Citation Ref", "Source Filename", "Page #", "Source Chunk ID", "Related Tool Verification"]
@@ -480,13 +617,21 @@ async def generate_xlsx(request: AgentInvestigateResponse):
             col_letter = openpyxl.utils.get_column_letter(col[0].column)
             ws_tools.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 60)
             
-        # Save to memory stream
+        # Save to memory stream and disk record
         file_stream = io.BytesIO()
         wb.save(file_stream)
+        content_bytes = file_stream.getvalue()
+        
+        try:
+            _, filename = save_report_record(db, request.query, "xlsx", content_bytes)
+        except Exception as err:
+            logger.warning(f"Could not persist report record: {err}")
+            filename = "SovereignX_Report.xlsx"
+            
         file_stream.seek(0)
         
         headers = {
-            "Content-Disposition": "attachment; filename=SovereignX_Report.xlsx"
+            "Content-Disposition": f"attachment; filename={filename}"
         }
         return StreamingResponse(
             file_stream,

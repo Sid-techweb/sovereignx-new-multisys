@@ -10,6 +10,7 @@ import Agents from './pages/Agents';
 import Settings from './pages/Settings';
 
 const API_BASE = 'http://127.0.0.1:8000';
+const API_KEY = import.meta.env.VITE_API_KEY || 'sovereignx-demo-key-2026';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('overview');
@@ -22,7 +23,7 @@ export default function App() {
   // Poll backend health and fetch configuration/documents
   const fetchData = async () => {
     try {
-      // 1. Health Check
+      // 1. Health Check (Public endpoint)
       const healthRes = await fetch(`${API_BASE}/health`);
       if (healthRes.ok) {
         const healthData = await healthRes.json();
@@ -33,16 +34,20 @@ export default function App() {
         setIsConnected(false);
       }
 
-      // 2. Model Gateway Info
-      const modelsRes = await fetch(`${API_BASE}/models`);
+      // 2. Model Gateway Info (Protected endpoint)
+      const modelsRes = await fetch(`${API_BASE}/models`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
       if (modelsRes.ok) {
         const modelsData = await modelsRes.json();
         setModelConfig(modelsData);
       }
 
-      // 3. Documents
+      // 3. Documents (Protected endpoint)
       setIsLoadingDocs(true);
-      const docsRes = await fetch(`${API_BASE}/documents`);
+      const docsRes = await fetch(`${API_BASE}/documents`, {
+        headers: { 'X-API-Key': API_KEY }
+      });
       if (docsRes.ok) {
         const docsData = await docsRes.json();
         setDocuments(docsData);

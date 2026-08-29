@@ -10,7 +10,7 @@ from app.gateway.exceptions import OllamaUnavailableError
 
 class TestAgentWiring(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
 
     def test_intake_agent_availability(self):
         """Test IntakeAgent verify_evidence_availability behaves correctly"""

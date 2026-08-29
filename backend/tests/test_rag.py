@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from app.main import app
+from app.config import settings
 import numpy as np
 
 from app.rag.chunker import chunk_document, split_text
@@ -84,7 +85,12 @@ class TestRAGEmbeddings(unittest.TestCase):
         provider.initialize()
 
         # Check constructor arguments: model_kwargs={'local_files_only': True}
-        mock_module_transformer_cls.assert_called_once_with("BAAI/bge-m3", model_kwargs={"local_files_only": True})
+        mock_module_transformer_cls.assert_called_once_with(
+            "BAAI/bge-m3",
+            model_kwargs={"local_files_only": True},
+            processor_kwargs={"local_files_only": True},
+            config_kwargs={"local_files_only": True}
+        )
         self.assertTrue(provider._initialized)
 
     @patch("sentence_transformers.sentence_transformer.modules.Transformer")
@@ -113,7 +119,12 @@ class TestRAGEmbeddings(unittest.TestCase):
         
         self.assertIn("not available locally", str(context.exception))
         # Ensure constructor was still called with local_files_only=True
-        mock_module_transformer_cls.assert_called_once_with("BAAI/bge-m3", model_kwargs={"local_files_only": True})
+        mock_module_transformer_cls.assert_called_once_with(
+            "BAAI/bge-m3",
+            model_kwargs={"local_files_only": True},
+            processor_kwargs={"local_files_only": True},
+            config_kwargs={"local_files_only": True}
+        )
 
     @patch("sentence_transformers.sentence_transformer.modules.Transformer")
     @patch("sentence_transformers.sentence_transformer.modules.Pooling")
@@ -312,7 +323,7 @@ class TestRAGRetriever(unittest.TestCase):
 
 class TestRAGAPIAndCORS(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
         self.mock_db = MagicMock()
         # Register dependency override for database session
         from app.database import get_db
