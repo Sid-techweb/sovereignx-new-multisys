@@ -6,12 +6,8 @@ import {
   Presentation, 
   FileSpreadsheet, 
   Download, 
-  Plus, 
   CheckCircle, 
-  Clock, 
   X,
-  FileCode,
-  Layers,
   Sparkles
 } from 'lucide-react';
 
@@ -154,13 +150,13 @@ export default function Reports() {
   const getFormatIcon = (fmt) => {
     switch (fmt?.toUpperCase()) {
       case 'DOCX':
-        return <FileText className="w-4 h-4 text-sky-400" />;
+        return <FileText className="w-4 h-4 text-console-amber" />;
       case 'PPTX':
-        return <Presentation className="w-4 h-4 text-amber-400" />;
+        return <Presentation className="w-4 h-4 text-console-amber" />;
       case 'XLSX':
-        return <FileSpreadsheet className="w-4 h-4 text-emerald-400" />;
+        return <FileSpreadsheet className="w-4 h-4 text-console-green" />;
       default:
-        return <ClipboardList className="w-4 h-4 text-slate-400" />;
+        return <ClipboardList className="w-4 h-4 text-console-muted" />;
     }
   };
 
@@ -169,119 +165,119 @@ export default function Reports() {
       <PageHeader 
         title="Audit Reports" 
         description="Generated investigation reports, validation records, and operational exports." 
-        action={
+        actions={
           <button
             onClick={() => setShowGenerateModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-medium text-sm transition-all shadow-md hover:shadow-sky-500/20"
+            className="flex items-center gap-2 px-4 py-2 bg-console-amber text-[#0b1620] hover:brightness-105 rounded-md font-semibold text-xs transition-all shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-console-amber font-mono"
           >
             <Sparkles className="w-4 h-4" />
-            Generate Report
+            GENERATE REPORT
           </button>
         }
       />
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
-            <ClipboardList className="w-5 h-5" />
+      {/* Summary Cards Stat Row */}
+      <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] grid grid-cols-1 md:grid-cols-4 gap-4 divide-y md:divide-y-0 md:divide-x divide-console-lineSoft">
+        <div className="flex items-center gap-4 pr-4 pt-2 md:pt-0">
+          <div className="w-9 h-9 rounded bg-console-panelSolid border border-console-line flex items-center justify-center text-console-text">
+            <ClipboardList className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-100 font-mono">{summary.total}</div>
-            <div className="text-xs text-slate-400 uppercase tracking-wider font-medium">Total Reports</div>
+            <div className="text-[10px] text-console-muted font-mono uppercase tracking-[0.14em]">TOTAL REPORTS</div>
+            <div className="text-2xl font-bold text-console-text font-mono tabular-nums">{summary.total}</div>
           </div>
         </div>
 
-        <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
-            <FileText className="w-5 h-5" />
+        <div className="flex items-center gap-4 px-0 md:px-4 pt-2 md:pt-0">
+          <div className="w-9 h-9 rounded bg-console-panelSolid border border-console-line flex items-center justify-center text-console-amber">
+            <FileText className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-100 font-mono">{summary.docx}</div>
-            <div className="text-xs text-slate-400 uppercase tracking-wider font-medium">Word (.DOCX)</div>
+            <div className="text-[10px] text-console-muted font-mono uppercase tracking-[0.14em]">WORD (.DOCX)</div>
+            <div className="text-2xl font-bold text-console-text font-mono tabular-nums">{summary.docx}</div>
           </div>
         </div>
 
-        <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-            <Presentation className="w-5 h-5" />
+        <div className="flex items-center gap-4 px-0 md:px-4 pt-2 md:pt-0">
+          <div className="w-9 h-9 rounded bg-console-panelSolid border border-console-line flex items-center justify-center text-console-amber">
+            <Presentation className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-100 font-mono">{summary.pptx}</div>
-            <div className="text-xs text-slate-400 uppercase tracking-wider font-medium">PowerPoint (.PPTX)</div>
+            <div className="text-[10px] text-console-muted font-mono uppercase tracking-[0.14em]">POWERPOINT (.PPTX)</div>
+            <div className="text-2xl font-bold text-console-text font-mono tabular-nums">{summary.pptx}</div>
           </div>
         </div>
 
-        <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
-          <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <FileSpreadsheet className="w-5 h-5" />
+        <div className="flex items-center gap-4 pl-0 md:pl-4 pt-2 md:pt-0">
+          <div className="w-9 h-9 rounded bg-console-greenSoft border border-console-green/30 flex items-center justify-center text-console-green">
+            <FileSpreadsheet className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-100 font-mono">{summary.xlsx}</div>
-            <div className="text-xs text-slate-400 uppercase tracking-wider font-medium">Excel (.XLSX)</div>
+            <div className="text-[10px] text-console-muted font-mono uppercase tracking-[0.14em]">EXCEL (.XLSX)</div>
+            <div className="text-2xl font-bold text-console-green font-mono tabular-nums">{summary.xlsx}</div>
           </div>
         </div>
       </div>
 
       {/* Reports Table */}
-      <div className="bg-slate-900/30 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+      <div className="bg-console-panel border border-console-line rounded-lg overflow-hidden backdrop-blur-[2px]">
         {loading ? (
-          <div className="p-12 text-center text-slate-500 font-mono text-sm">
+          <div className="p-12 text-center text-console-muted font-mono text-xs">
             Loading generated report records...
           </div>
         ) : reports.length === 0 ? (
-          <div className="p-12 text-center space-y-3">
-            <ClipboardList className="w-12 h-12 text-slate-700 mx-auto" />
-            <h3 className="text-base font-semibold text-slate-300">No audit reports have been generated yet.</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+          <div className="p-12 text-center space-y-3 font-mono">
+            <ClipboardList className="w-10 h-10 text-console-muted mx-auto" />
+            <h3 className="text-sm font-semibold text-console-text">No audit reports generated yet.</h3>
+            <p className="text-xs text-console-muted max-w-sm mx-auto">
               Click 'Generate Report' above to export an investigation report in Word, PowerPoint, or Excel format.
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-950/60 border-b border-slate-800 text-xs font-mono text-slate-400 uppercase tracking-wider">
+            <table className="w-full text-left text-xs font-sans">
+              <thead className="bg-console-panelSolid border-b border-console-line text-[10px] font-mono text-console-muted uppercase tracking-[0.14em]">
                 <tr>
-                  <th className="py-3.5 px-4">Report ID</th>
-                  <th className="py-3.5 px-4">Investigation / Case</th>
-                  <th className="py-3.5 px-4">Format</th>
-                  <th className="py-3.5 px-4">Filename</th>
-                  <th className="py-3.5 px-4">Generated At</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
+                  <th className="py-2.5 px-4">REPORT ID</th>
+                  <th className="py-2.5 px-4">INVESTIGATION / CASE</th>
+                  <th className="py-2.5 px-4">FORMAT</th>
+                  <th className="py-2.5 px-4">FILENAME</th>
+                  <th className="py-2.5 px-4">GENERATED AT</th>
+                  <th className="py-2.5 px-4">STATUS</th>
+                  <th className="py-2.5 px-4 text-right">ACTIONS</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-850 font-sans">
+              <tbody className="divide-y divide-console-lineSoft">
                 {reports.map((r) => (
-                  <tr key={r.report_id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-sky-400 flex items-center gap-2">
+                  <tr key={r.report_id} className="hover:bg-white/[.02] transition-colors">
+                    <td className="py-3 px-4 font-mono font-bold text-console-amber flex items-center gap-2 tabular-nums">
                       {getFormatIcon(r.format)}
                       {r.report_id}
                     </td>
-                    <td className="py-3.5 px-4 text-slate-300 max-w-xs truncate" title={r.query}>
+                    <td className="py-3 px-4 text-console-text2 max-w-xs truncate" title={r.query}>
                       {r.query}
                     </td>
-                    <td className="py-3.5 px-4 font-mono text-xs font-bold text-slate-300 uppercase">
+                    <td className="py-3 px-4 font-mono text-xs font-bold text-console-text uppercase">
                       {r.format}
                     </td>
-                    <td className="py-3.5 px-4 font-mono text-xs text-slate-400">
+                    <td className="py-3 px-4 font-mono text-xs text-console-muted">
                       {r.filename}
                     </td>
-                    <td className="py-3.5 px-4 text-xs font-mono text-slate-500">
+                    <td className="py-3 px-4 text-xs font-mono text-console-muted tabular-nums">
                       {new Date(r.generated_at).toLocaleString()}
                     </td>
-                    <td className="py-3.5 px-4">
-                      <span className="px-2.5 py-1 rounded-full text-xs font-mono bg-emerald-950/60 text-emerald-400 border border-emerald-800/50">
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wider bg-console-greenSoft text-console-green border border-console-green/30">
                         {r.status}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="py-3 px-4 text-right">
                       <button
                         onClick={() => handleDownloadFile(r.filename)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-950/60 hover:bg-sky-900/60 text-sky-400 border border-sky-800/60 text-xs rounded font-medium transition-all"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/[.05] hover:bg-white/[.1] text-console-text border border-console-line text-xs rounded font-mono transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-console-amber"
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        Download
+                        <Download className="w-3.5 h-3.5 text-console-amber" />
+                        DOWNLOAD
                       </button>
                     </td>
                   </tr>
@@ -294,95 +290,95 @@ export default function Reports() {
 
       {/* Generate Report Modal */}
       {showGenerateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-lg p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-slate-100 font-mono flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-sky-400" />
-                Generate Audit Report
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-console-panelSolid border border-console-line rounded-lg w-full max-w-lg p-6 shadow-2xl space-y-4 text-console-text">
+            <div className="flex items-center justify-between border-b border-console-line pb-3">
+              <h3 className="text-xs font-bold text-console-text font-mono uppercase tracking-[0.14em] flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-console-amber" />
+                GENERATE AUDIT REPORT
               </h3>
-              <button onClick={() => setShowGenerateModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowGenerateModal(false)} className="text-console-muted hover:text-console-text">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-4 text-xs font-mono">
               <div>
-                <label className="block text-slate-400 mb-1">Target Investigation Query</label>
-                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-300 font-mono">
+                <label className="block text-console-muted mb-1 uppercase tracking-wider text-[10px]">TARGET INVESTIGATION QUERY</label>
+                <div className="bg-console-inset p-3 rounded border border-console-line text-console-text font-mono">
                   {samplePayload.query}
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-2">Select Output Format (Phase 8 Endpoints)</label>
+                <label className="block text-console-muted mb-2 uppercase tracking-wider text-[10px]">SELECT OUTPUT FORMAT (PHASE 8 ENDPOINTS)</label>
                 <div className="grid grid-cols-3 gap-3">
                   <button
                     type="button"
                     onClick={() => setSelectedFormat('docx')}
-                    className={`p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${
+                    className={`p-3 rounded border flex flex-col items-center gap-2 transition-all ${
                       selectedFormat === 'docx'
-                        ? 'bg-sky-950/80 border-sky-500 text-sky-300 shadow-md'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                        ? 'bg-console-amberSoft border-console-amber text-console-amber font-bold shadow'
+                        : 'bg-console-inset border-console-line text-console-muted hover:text-console-text'
                     }`}
                   >
-                    <FileText className="w-6 h-6 text-sky-400" />
+                    <FileText className="w-6 h-6 text-console-amber" />
                     <span>Word (.DOCX)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setSelectedFormat('pptx')}
-                    className={`p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${
+                    className={`p-3 rounded border flex flex-col items-center gap-2 transition-all ${
                       selectedFormat === 'pptx'
-                        ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-md'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                        ? 'bg-console-amberSoft border-console-amber text-console-amber font-bold shadow'
+                        : 'bg-console-inset border-console-line text-console-muted hover:text-console-text'
                     }`}
                   >
-                    <Presentation className="w-6 h-6 text-amber-400" />
+                    <Presentation className="w-6 h-6 text-console-amber" />
                     <span>PowerPoint (.PPTX)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setSelectedFormat('xlsx')}
-                    className={`p-3 rounded-lg border flex flex-col items-center gap-2 transition-all ${
+                    className={`p-3 rounded border flex flex-col items-center gap-2 transition-all ${
                       selectedFormat === 'xlsx'
-                        ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-md'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                        ? 'bg-console-greenSoft border-console-green text-console-green font-bold shadow'
+                        : 'bg-console-inset border-console-line text-console-muted hover:text-console-text'
                     }`}
                   >
-                    <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
+                    <FileSpreadsheet className="w-6 h-6 text-console-green" />
                     <span>Excel (.XLSX)</span>
                   </button>
                 </div>
               </div>
 
-              <div className="bg-slate-950/60 border border-slate-850 p-3 rounded-lg text-slate-400 text-xs font-mono space-y-1">
-                <div className="text-slate-300 font-semibold flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  Preserved Provenance Guarantee
+              <div className="bg-console-inset border border-console-line p-3 rounded text-console-muted text-xs font-mono space-y-1">
+                <div className="text-console-text font-semibold flex items-center gap-1.5 uppercase text-[10px] tracking-wider">
+                  <CheckCircle className="w-3.5 h-3.5 text-console-green" />
+                  PRESERVED PROVENANCE GUARANTEE
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Reports preserve grounded findings, citations, filenames, page numbers, chunk IDs, and deterministic Phase 6 tool verifications without modification.
+                <p className="text-[10px] text-console-text2">
+                  Reports preserve grounded findings, citations, filenames, page numbers, chunk IDs, and deterministic Phase 6 tool verifications.
                 </p>
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+              <div className="flex justify-end gap-3 pt-3 border-t border-console-line">
                 <button
                   type="button"
                   onClick={() => setShowGenerateModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 font-mono"
+                  className="px-4 py-1.5 bg-white/[.05] text-console-text rounded border border-console-line hover:bg-white/[.1]"
                 >
-                  Cancel
+                  CANCEL
                 </button>
                 <button
                   type="button"
                   onClick={handleGenerateReport}
                   disabled={isGenerating}
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-medium shadow-md font-mono flex items-center gap-2"
+                  className="px-4 py-1.5 bg-console-amber text-[#0b1620] font-semibold rounded hover:brightness-105 shadow flex items-center gap-1.5"
                 >
-                  {isGenerating ? "Generating..." : `Generate & Download .${selectedFormat.toUpperCase()}`}
+                  {isGenerating ? "GENERATING..." : `GENERATE & DOWNLOAD .${selectedFormat.toUpperCase()}`}
                 </button>
               </div>
             </div>

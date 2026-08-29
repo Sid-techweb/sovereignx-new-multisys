@@ -32,22 +32,22 @@ export default function SystemStatus({ modelConfig, isConnected }) {
   ];
 
   return (
-    <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg">
-      <h2 className="text-sm font-semibold tracking-wider text-slate-400 uppercase mb-4 flex items-center gap-2">
+    <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px]">
+      <h2 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft flex items-center gap-2">
         {isConnected ? (
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          <ShieldCheck className="w-3.5 h-3.5 text-console-green" />
         ) : (
-          <ServerCrash className="w-4 h-4 text-rose-400" />
+          <ServerCrash className="w-3.5 h-3.5 text-console-red" />
         )}
-        System Health Monitor
+        <span>SYSTEM HEALTH MONITOR</span>
       </h2>
       
-      <div className="space-y-4">
+      <div className="space-y-3">
         {systems.map((sys) => (
-          <div key={sys.name} className="flex items-center justify-between border-b border-slate-900/60 pb-3 last:border-0 last:pb-0">
+          <div key={sys.name} className="flex items-center justify-between pb-2 border-b border-console-lineSoft last:border-0 last:pb-0">
             <div>
-              <p className="text-sm font-medium text-slate-200">{sys.name}</p>
-              <p className="text-xs text-slate-500 font-mono mt-0.5">{sys.detail}</p>
+              <p className="text-xs font-medium text-console-text">{sys.name}</p>
+              <p className="text-[10px] text-console-muted font-mono mt-0.5">{sys.detail}</p>
             </div>
             <StatusBadge status={sys.status} />
           </div>

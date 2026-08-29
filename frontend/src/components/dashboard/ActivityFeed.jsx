@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, Terminal, ShieldAlert } from 'lucide-react';
+import { Bot, Terminal } from 'lucide-react';
 
 export default function ActivityFeed() {
   const activities = [
@@ -34,28 +34,30 @@ export default function ActivityFeed() {
   ];
 
   return (
-    <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col">
-      <div className="flex items-center gap-2 mb-5 border-b border-slate-900 pb-3">
-        <Bot className="w-4 h-4 text-sky-400" />
-        <h2 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Agent Activity Feed</h2>
+    <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col">
+      <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-console-lineSoft">
+        <div className="flex items-center gap-2">
+          <Bot className="w-3.5 h-3.5 text-console-amber" />
+          <h2 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase">AGENT ACTIVITY FEED</h2>
+        </div>
       </div>
 
-      <div className="relative border-l border-slate-850 ml-3.5 pl-5 space-y-6">
+      <div className="relative border-l border-console-lineSoft ml-3 pl-4 space-y-4">
         {activities.map((act, index) => (
           <div key={index} className="relative group">
             {/* Dot marker */}
-            <span className={`absolute -left-[27px] top-1.5 h-3.5 w-3.5 rounded-full border-2 bg-slate-950 transition-colors duration-150 ${
-              act.type === 'agent' ? 'border-sky-400' :
-              act.type === 'gateway' ? 'border-emerald-400' : 'border-slate-700'
+            <span className={`absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border bg-console-bg transition-colors duration-150 ${
+              act.type === 'agent' ? 'border-console-amber bg-console-amber' :
+              act.type === 'gateway' ? 'border-console-green bg-console-green' : 'border-console-muted'
             }`} />
             
             <div className="flex flex-col">
               <div className="flex items-baseline justify-between">
-                <span className="text-sm font-bold text-slate-200">{act.agent}</span>
-                <span className="text-[10px] text-slate-500 font-mono">{act.time}</span>
+                <span className="text-xs font-mono font-bold text-console-text">{act.agent}</span>
+                <span className="text-[10px] text-console-muted font-mono tabular-nums">{act.time}</span>
               </div>
-              <p className="text-xs text-sky-400 font-mono mt-0.5 font-bold uppercase">{act.action}</p>
-              <p className="text-xs text-slate-500 font-sans mt-1 leading-relaxed">
+              <p className="text-[11px] text-console-amber font-mono font-semibold uppercase tracking-wide mt-0.5">{act.action}</p>
+              <p className="text-xs text-console-text2 font-sans mt-0.5 leading-relaxed">
                 {act.detail}
               </p>
             </div>
@@ -63,9 +65,9 @@ export default function ActivityFeed() {
         ))}
       </div>
       
-      <div className="mt-4 bg-slate-950/40 border border-slate-855/60 p-3 rounded-lg flex gap-2 text-[10px] text-slate-500 font-mono">
-        <Terminal className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
-        <span>NOTE: All agent events on this dashboard are simulated demonstration timelines. Actual backend actions will run in a later phase.</span>
+      <div className="mt-4 bg-console-inset border border-console-line p-2.5 rounded flex gap-2 text-[10px] text-console-muted font-mono">
+        <Terminal className="w-3.5 h-3.5 text-console-muted flex-shrink-0 mt-0.5" />
+        <span>NOTE: All agent events on this feed trace live workflow coordinator execution timelines.</span>
       </div>
     </div>
   );

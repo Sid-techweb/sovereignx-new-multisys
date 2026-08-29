@@ -1,41 +1,38 @@
 import React from 'react';
 
 export default function MetricCard({ title, value, icon: Icon, description, trend, status }) {
-  let borderStyle = 'border-slate-800 bg-slate-900/30';
-  let titleColor = 'text-slate-400';
-  let valueColor = 'text-slate-100';
+  let valueColor = 'text-console-text';
+  let badgeStyle = 'bg-console-panelSolid border-console-line text-console-text2';
 
   if (status === 'critical') {
-    borderStyle = 'border-rose-500/25 bg-rose-500/[0.02]';
+    valueColor = 'text-console-red';
+    badgeStyle = 'bg-console-red/10 border-console-red/30 text-console-red';
   } else if (status === 'warning') {
-    borderStyle = 'border-amber-500/25 bg-amber-500/[0.02]';
+    valueColor = 'text-console-amber';
+    badgeStyle = 'bg-console-amberSoft border-console-amber/30 text-console-amber';
   } else if (status === 'active') {
-    borderStyle = 'border-sky-500/25 bg-sky-500/[0.02]';
+    valueColor = 'text-console-text';
+    badgeStyle = 'bg-console-greenSoft border-console-green/30 text-console-green';
   }
 
   return (
-    <div className={`border rounded-xl p-5 shadow-lg flex items-start justify-between ${borderStyle}`}>
-      <div className="space-y-2">
-        <span className={`text-xs font-semibold uppercase tracking-wider ${titleColor}`}>{title}</span>
+    <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex items-start justify-between">
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase block">{title}</span>
         <div className="flex items-baseline gap-2">
-          <span className={`text-2xl font-bold font-mono tracking-tight ${valueColor}`}>{value}</span>
+          <span className={`text-2xl font-mono font-bold tracking-tight tabular-nums ${valueColor}`}>{value}</span>
           {trend && (
-            <span className="text-xs font-mono text-emerald-400">{trend}</span>
+            <span className="text-xs font-mono text-console-green tabular-nums">{trend}</span>
           )}
         </div>
         {description && (
-          <p className="text-xs text-slate-500 font-sans">{description}</p>
+          <p className="text-xs text-console-text2">{description}</p>
         )}
       </div>
       
       {Icon && (
-        <div className={`p-2.5 rounded-lg border ${
-          status === 'critical' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
-          status === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-          status === 'active' ? 'bg-sky-500/10 border-sky-500/20 text-sky-400' :
-          'bg-slate-800 border-slate-700 text-slate-400'
-        }`}>
-          <Icon className="w-5 h-5" />
+        <div className={`p-2 rounded border ${badgeStyle}`}>
+          <Icon className="w-4 h-4" />
         </div>
       )}
     </div>

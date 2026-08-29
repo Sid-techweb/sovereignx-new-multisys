@@ -1,6 +1,6 @@
 import React from 'react';
 import PageHeader from '../components/common/PageHeader';
-import { Settings as SettingsIcon, Shield, Cpu, RefreshCw } from 'lucide-react';
+import { Shield, Cpu, RefreshCw } from 'lucide-react';
 import StatusBadge from '../components/common/StatusBadge';
 
 export default function Settings({ modelConfig, healthStatus }) {
@@ -17,70 +17,70 @@ export default function Settings({ modelConfig, healthStatus }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Gateway Config Details */}
-        <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
-          <h3 className="text-sm font-semibold tracking-wider text-slate-400 uppercase flex items-center gap-2 border-b border-slate-900 pb-3">
-            <Cpu className="w-4 h-4 text-sky-400" />
-            Active Gateway Configuration
+        <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] space-y-4">
+          <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase flex items-center gap-2 border-b border-console-lineSoft pb-3">
+            <Cpu className="w-4 h-4 text-console-amber" />
+            ACTIVE GATEWAY CONFIGURATION
           </h3>
           
-          <div className="space-y-4 font-mono text-sm">
-            <div className="flex justify-between border-b border-slate-900 pb-2">
-              <span className="text-slate-500">MODEL_PROVIDER</span>
-              <span className="text-slate-300 capitalize font-bold">{provider}</span>
+          <div className="space-y-3 font-mono text-xs">
+            <div className="flex justify-between border-b border-console-lineSoft pb-2">
+              <span className="text-console-muted">MODEL_PROVIDER</span>
+              <span className="text-console-text uppercase font-bold">{provider}</span>
             </div>
             
-            <div className="flex justify-between border-b border-slate-900 pb-2">
-              <span className="text-slate-500">OLLAMA_BASE_URL</span>
-              <span className="text-slate-300 text-right truncate max-w-[250px]" title="http://localhost:11434">
-                http://localhost:11434
+            <div className="flex justify-between border-b border-console-lineSoft pb-2">
+              <span className="text-console-muted">OLLAMA_BASE_URL</span>
+              <span className="text-console-text text-right truncate max-w-[250px] tabular-nums" title="http://10.11.58.35:11434">
+                http://10.11.58.35:11434
               </span>
             </div>
 
-            <div className="flex justify-between border-b border-slate-900 pb-2">
-              <span className="text-slate-500">MODEL_NAME</span>
-              <span className="text-slate-300">{modelName}</span>
+            <div className="flex justify-between border-b border-console-lineSoft pb-2">
+              <span className="text-console-muted">MODEL_NAME</span>
+              <span className="text-console-text font-bold">{modelName}</span>
             </div>
 
             <div className="flex justify-between">
-              <span className="text-slate-500">PROVIDER_STATUS</span>
+              <span className="text-console-muted">PROVIDER_STATUS</span>
               <StatusBadge status={status} />
             </div>
           </div>
         </div>
 
         {/* System Deployment Profile */}
-        <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
-          <h3 className="text-sm font-semibold tracking-wider text-slate-400 uppercase flex items-center gap-2 border-b border-slate-900 pb-3">
-            <Shield className="w-4 h-4 text-sky-400" />
-            SovereignX System Info
+        <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] space-y-4">
+          <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase flex items-center gap-2 border-b border-console-lineSoft pb-3">
+            <Shield className="w-4 h-4 text-console-green" />
+            SOVEREIGNX SYSTEM INFO
           </h3>
           
-          <div className="space-y-4 font-mono text-sm">
-            <div className="flex justify-between border-b border-slate-900 pb-2">
-              <span className="text-slate-500">ENV_PROFILE</span>
-              <span className="text-slate-300 font-bold">development</span>
+          <div className="space-y-3 font-mono text-xs">
+            <div className="flex justify-between border-b border-console-lineSoft pb-2">
+              <span className="text-console-muted">ENV_PROFILE</span>
+              <span className="text-console-text font-bold uppercase">DEMO (AIR-GAPPED)</span>
             </div>
 
-            <div className="flex justify-between border-b border-slate-900 pb-2">
-              <span className="text-slate-500">BACKEND_HEATH</span>
-              <span className="text-slate-300 font-bold uppercase">{healthStatus}</span>
+            <div className="flex justify-between border-b border-console-lineSoft pb-2">
+              <span className="text-console-muted">BACKEND_HEALTH</span>
+              <span className="text-console-green font-bold uppercase">{healthStatus}</span>
             </div>
             
-            <div className="flex justify-between border-b border-slate-900 pb-2">
-              <span className="text-slate-500">API_SERVER_URL</span>
-              <span className="text-slate-300">http://localhost:8000</span>
+            <div className="flex justify-between border-b border-console-lineSoft pb-2">
+              <span className="text-console-muted">API_SERVER_URL</span>
+              <span className="text-console-text tabular-nums">http://127.0.0.1:8000</span>
             </div>
 
             <div className="flex justify-between">
-              <span className="text-slate-500">VERSION</span>
-              <span className="text-slate-300 font-bold">0.1.0-alpha (Phase 2A/2B)</span>
+              <span className="text-console-muted">VERSION</span>
+              <span className="text-console-amber font-bold tabular-nums">v1.0.0 (Phase 10 Closed)</span>
             </div>
           </div>
         </div>
       </div>
       
-      <div className="bg-slate-950/40 border border-slate-855/60 p-4 rounded-xl flex gap-2 text-xs text-slate-500 font-mono max-w-3xl">
-        <RefreshCw className="w-4 h-4 text-slate-600 flex-shrink-0" />
+      <div className="bg-console-inset border border-console-line p-3 rounded flex gap-2 text-xs text-console-muted font-mono max-w-3xl">
+        <RefreshCw className="w-4 h-4 text-console-muted flex-shrink-0 mt-0.5" />
         <span>To switch the model gateway provider to Ollama or modify settings dynamically, edit the `.env` file in the project root directory and restart the backend server.</span>
       </div>
     </div>

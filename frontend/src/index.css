@@ -2,8 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Inter-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/Inter-SemiBold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/IBMPlexMono-Regular.woff2') format('woff2');
+}
+
+.app-bg {
+  position: relative;
+  min-height: 100vh;
+  background-color: #081119;
+}
+
+/* the photograph */
+.app-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url("/assets/refinery-bg.jpg");
+  background-size: cover;
+  background-position: center 40%;
+  filter: saturate(0.60) brightness(0.70);
+  pointer-events: none;
+}
+
+/* the navy veil — tuned so text is perfectly readable AND refinery towers are clearly discernible */
+.app-bg::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(8,17,25,0.70) 0%, rgba(8,17,25,0.76) 50%, rgba(8,17,25,0.84) 100%),
+    radial-gradient(120% 80% at 50% 0%, rgba(20,44,66,0.40) 0%, rgba(8,17,25,0) 70%);
+  pointer-events: none;
+}
+
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 antialiased;
+    background-color: #081119;
+    color: #e6eef5;
+    font-family: Inter, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+}
+
+/* Direct Console Design Tokens & Utilities */
+.bg-console-amber { background-color: #ef8f2b !important; }
+.text-console-amber { color: #ef8f2b !important; }
+.border-console-amber { border-color: #ef8f2b !important; }
+.bg-console-amberSoft { background-color: rgba(239, 143, 43, 0.16) !important; }
+
+.bg-console-green { background-color: #4ec77f !important; }
+.text-console-green { color: #4ec77f !important; }
+.border-console-green { border-color: #4ec77f !important; }
+.bg-console-greenSoft { background-color: rgba(78, 199, 127, 0.16) !important; }
+
+.bg-console-red { background-color: #e2604c !important; }
+.text-console-red { color: #e2604c !important; }
+.border-console-red { border-color: #e2604c !important; }
+
+.bg-console-panel { background-color: rgba(12, 24, 35, 0.66) !important; }
+.bg-console-panelSolid { background-color: #0d1a26 !important; }
+.bg-console-inset { background-color: rgba(6, 14, 21, 0.55) !important; }
+.border-console-line { border-color: rgba(146, 178, 208, 0.11) !important; }
+.border-console-lineSoft { border-color: rgba(146, 178, 208, 0.06) !important; }
+
+.text-console-text { color: #e6eef5 !important; }
+.text-console-text2 { color: #9db0c2 !important; }
+.text-console-muted { color: #6b8095 !important; }
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom scrollbars for industrial feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(6, 14, 21, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(146, 178, 208, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(239, 143, 43, 0.4);
 }

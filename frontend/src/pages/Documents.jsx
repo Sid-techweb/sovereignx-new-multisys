@@ -11,8 +11,6 @@ import {
   FileSpreadsheet, 
   FileImage,
   Database,
-  Calendar,
-  Layers,
   FileCode
 } from 'lucide-react';
 
@@ -133,9 +131,9 @@ export default function Documents({ documents = [], loading = false, onRefresh }
 
   const getFileIcon = (fileType) => {
     const ext = fileType.toLowerCase();
-    if (ext === 'csv') return <FileSpreadsheet className="w-4 h-4 text-emerald-400" />;
-    if (['png', 'jpg', 'jpeg'].includes(ext)) return <FileImage className="w-4 h-4 text-amber-400" />;
-    return <FileText className="w-4 h-4 text-sky-400" />;
+    if (ext === 'csv') return <FileSpreadsheet className="w-3.5 h-3.5 text-console-green" />;
+    if (['png', 'jpg', 'jpeg'].includes(ext)) return <FileImage className="w-3.5 h-3.5 text-console-amber" />;
+    return <FileText className="w-3.5 h-3.5 text-console-amber" />;
   };
 
   return (
@@ -150,13 +148,13 @@ export default function Documents({ documents = [], loading = false, onRefresh }
         <div className="lg:col-span-2 space-y-6">
           
           {/* Upload Interface */}
-          <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Document Intake Portal
+          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] space-y-4">
+            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-2 border-b border-console-lineSoft">
+              DOCUMENT INTAKE PORTAL
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className={`border-2 border-dashed border-slate-800 hover:border-sky-500/50 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors ${
+              <label className={`border border-dashed border-console-line hover:border-console-amber rounded-lg p-5 flex flex-col items-center justify-center cursor-pointer transition-colors bg-console-inset ${
                 uploading ? 'pointer-events-none opacity-50' : ''
               }`}>
                 <input 
@@ -167,45 +165,45 @@ export default function Documents({ documents = [], loading = false, onRefresh }
                   disabled={uploading}
                 />
                 {uploading ? (
-                  <RefreshCw className="w-8 h-8 text-sky-400 animate-spin mb-2" />
+                  <RefreshCw className="w-7 h-7 text-console-amber animate-spin mb-2" />
                 ) : (
-                  <Upload className="w-8 h-8 text-slate-500 mb-2" />
+                  <Upload className="w-7 h-7 text-console-muted mb-2" />
                 )}
-                <span className="text-xs font-semibold text-slate-300">
+                <span className="text-xs font-semibold text-console-text font-sans">
                   {uploading ? 'Uploading File...' : 'Select File to Upload'}
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono mt-1">
+                <span className="text-[10px] text-console-muted font-mono mt-1">
                   PDF, CSV, PNG, JPG, JPEG up to 25MB
                 </span>
               </label>
 
               {/* Status Display Area */}
-              <div className="bg-slate-950/40 border border-slate-850/60 rounded-xl p-4 flex flex-col justify-center space-y-2">
-                <div className="text-xs font-mono text-slate-500 uppercase tracking-widest border-b border-slate-900 pb-1.5 mb-1.5">
-                  Upload Status Monitor
+              <div className="bg-console-inset border border-console-line rounded-lg p-4 flex flex-col justify-center space-y-2 font-mono">
+                <div className="text-[10px] text-console-muted uppercase tracking-[0.14em] border-b border-console-lineSoft pb-1.5 mb-1">
+                  UPLOAD STATUS MONITOR
                 </div>
                 
                 {uploading && (
-                  <p className="text-xs text-sky-400 font-mono flex items-center gap-1.5">
+                  <p className="text-xs text-console-amber font-mono flex items-center gap-1.5">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Transferring payload to storage...
                   </p>
                 )}
                 
                 {uploadSuccess && (
-                  <p className="text-xs text-emerald-400 font-mono flex items-center gap-1.5">
+                  <p className="text-xs text-console-green font-mono flex items-center gap-1.5">
                     <CheckCircle className="w-3.5 h-3.5" /> Document ingested successfully!
                   </p>
                 )}
 
                 {uploadError && (
-                  <p className="text-xs text-rose-400 font-sans flex items-start gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> {uploadError}
+                  <p className="text-xs text-console-red font-sans flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-console-red" /> {uploadError}
                   </p>
                 )}
 
                 {!uploading && !uploadSuccess && !uploadError && (
-                  <p className="text-xs text-slate-500 font-sans italic">
-                    Ready. Standardized UUIDs will be generated to enforce server path integrity.
+                  <p className="text-xs text-console-muted font-mono italic">
+                    Ready. Standardized UUIDs generated to enforce server path integrity.
                   </p>
                 )}
               </div>
@@ -213,72 +211,72 @@ export default function Documents({ documents = [], loading = false, onRefresh }
           </div>
 
           {/* Document Table */}
-          <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-900 pb-3">
-              Ingested Repository Library
+          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col">
+            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft">
+              INGESTED REPOSITORY LIBRARY
             </h3>
             
             {loading ? (
               <div className="flex flex-col items-center justify-center py-10">
-                <div className="w-6 h-6 border-2 border-sky-500/20 border-t-sky-500 rounded-full animate-spin"></div>
-                <p className="text-[10px] text-slate-500 font-mono mt-2">Loading metadata...</p>
+                <div className="w-5 h-5 border-2 border-console-amber/20 border-t-console-amber rounded-full animate-spin"></div>
+                <p className="text-[10px] text-console-muted font-mono mt-2">Loading metadata...</p>
               </div>
             ) : documents.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse text-xs font-sans">
                   <thead>
-                    <tr className="border-b border-slate-800 text-xs font-mono uppercase text-slate-500">
-                      <th className="py-2.5 px-3">Document</th>
-                      <th className="py-2.5 px-3">Type</th>
-                      <th className="py-2.5 px-3">Size</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3">Source</th>
-                      <th className="py-2.5 px-3">Actions</th>
+                    <tr className="border-b border-console-line text-[10px] font-mono uppercase tracking-[0.14em] text-console-muted bg-console-panelSolid">
+                      <th className="py-2.5 px-3">DOCUMENT</th>
+                      <th className="py-2.5 px-3">TYPE</th>
+                      <th className="py-2.5 px-3">SIZE</th>
+                      <th className="py-2.5 px-3">STATUS</th>
+                      <th className="py-2.5 px-3">SOURCE</th>
+                      <th className="py-2.5 px-3 text-right">ACTIONS</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-900 text-sm">
+                  <tbody className="divide-y divide-console-lineSoft">
                     {documents.map((doc) => (
                       <tr 
                         key={doc.document_id} 
-                        className={`hover:bg-slate-900/10 transition-colors duration-150 ${
-                          selectedDoc && selectedDoc.document_id === doc.document_id ? 'bg-sky-500/[0.02]' : ''
+                        className={`hover:bg-white/[.02] transition-colors duration-150 ${
+                          selectedDoc && selectedDoc.document_id === doc.document_id ? 'bg-console-amberSoft/20' : ''
                         }`}
                       >
-                        <td className="py-3 px-3 font-semibold text-slate-200 max-w-[200px] truncate" title={doc.filename}>
+                        <td className="py-2.5 px-3 font-semibold text-console-text max-w-[200px] truncate" title={doc.filename}>
                           {doc.filename}
                         </td>
-                        <td className="py-3 px-3 font-mono text-xs uppercase flex items-center gap-1.5 mt-0.5">
+                        <td className="py-2.5 px-3 font-mono text-xs uppercase flex items-center gap-1.5 mt-0.5">
                           {getFileIcon(doc.file_type)}
                           <span>{doc.file_type}</span>
                         </td>
-                        <td className="py-3 px-3 font-mono text-xs text-slate-400">
+                        <td className="py-2.5 px-3 font-mono text-xs text-console-muted tabular-nums">
                           {Math.round(doc.file_size / 1024)} KB
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="py-2.5 px-3">
                           <StatusBadge status={doc.status} />
                         </td>
-                        <td className="py-3 px-3 font-mono text-xs text-slate-500">
+                        <td className="py-2.5 px-3 font-mono text-xs text-console-muted">
                           {doc.source}
                         </td>
-                        <td className="py-3 px-3 space-x-2">
+                        <td className="py-2.5 px-3 text-right space-x-2">
                           <button
                             onClick={() => handleProcess(doc.document_id)}
                             disabled={processingId === doc.document_id || ['processed', 'not_implemented', 'processed_with_no_text'].includes(doc.status)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-600 transition-colors"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-console-amber text-[#0b1620] hover:brightness-105 disabled:opacity-40 disabled:pointer-events-none transition-all font-mono"
                           >
                             {processingId === doc.document_id ? (
                               <RefreshCw className="w-3 h-3 animate-spin" />
                             ) : (
-                              'Process'
+                              'PROCESS'
                             )}
                           </button>
                           
                           <button
                             onClick={() => handleViewDetails(doc.document_id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-white/[.05] hover:bg-white/[.1] text-console-text border border-console-line transition-all font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-console-amber"
                           >
-                            <Eye className="w-3.5 h-3.5" />
-                            View
+                            <Eye className="w-3.5 h-3.5 text-console-amber" />
+                            VIEW
                           </button>
                         </td>
                       </tr>
@@ -288,8 +286,8 @@ export default function Documents({ documents = [], loading = false, onRefresh }
               </div>
             ) : (
               <div className="text-center py-10 space-y-2">
-                <Database className="w-8 h-8 text-slate-700 mx-auto" />
-                <p className="text-xs text-slate-500 italic">No documents ingested. Select files above to populate the registry.</p>
+                <Database className="w-8 h-8 text-console-muted mx-auto" />
+                <p className="text-xs text-console-muted font-mono italic">No documents ingested. Select files above to populate the registry.</p>
               </div>
             )}
           </div>
@@ -297,111 +295,111 @@ export default function Documents({ documents = [], loading = false, onRefresh }
 
         {/* Right Grid: Document Detail / Evidence Viewer */}
         <div className="space-y-6">
-          <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col h-full">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-900 pb-3">
-              Evidence Viewer & Provenance
+          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col h-full">
+            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft">
+              EVIDENCE VIEWER & PROVENANCE
             </h3>
 
             {selectedDoc ? (
-              <div className="space-y-5 flex-1 flex flex-col">
+              <div className="space-y-4 flex-1 flex flex-col">
                 {/* Meta details */}
-                <div className="bg-slate-950/40 border border-slate-850 p-4 rounded-xl space-y-3 font-mono text-[11px]">
-                  <div className="flex flex-col gap-1 border-b border-slate-900 pb-2">
-                    <span className="text-slate-500 uppercase tracking-widest text-[9px] font-bold">Document Title</span>
-                    <span className="text-slate-200 font-sans font-bold text-xs truncate" title={selectedDoc.filename}>
+                <div className="bg-console-inset border border-console-line p-3.5 rounded space-y-2 font-mono text-[11px]">
+                  <div className="flex flex-col gap-1 border-b border-console-lineSoft pb-2">
+                    <span className="text-console-muted uppercase tracking-[0.14em] text-[9px] font-bold">DOCUMENT TITLE</span>
+                    <span className="text-console-text font-sans font-bold text-xs truncate" title={selectedDoc.filename}>
                       {selectedDoc.filename}
                     </span>
                   </div>
                   
-                  <div className="flex justify-between border-b border-slate-900 pb-2">
-                    <span className="text-slate-500">DOCUMENT ID</span>
-                    <span className="text-slate-400 text-right truncate max-w-[150px]" title={selectedDoc.document_id}>
+                  <div className="flex justify-between border-b border-console-lineSoft pb-1.5">
+                    <span className="text-console-muted">DOCUMENT ID</span>
+                    <span className="text-console-text2 text-right truncate max-w-[150px] tabular-nums" title={selectedDoc.document_id}>
                       {selectedDoc.document_id}
                     </span>
                   </div>
 
-                  <div className="flex justify-between border-b border-slate-900 pb-2">
-                    <span className="text-slate-500">PROVENANCE SOURCE</span>
-                    <span className="text-sky-400 font-bold uppercase">{selectedDoc.source}</span>
+                  <div className="flex justify-between border-b border-console-lineSoft pb-1.5">
+                    <span className="text-console-muted">PROVENANCE SOURCE</span>
+                    <span className="text-console-amber font-bold uppercase">{selectedDoc.source}</span>
                   </div>
 
-                  <div className="flex justify-between border-b border-slate-900 pb-2">
-                    <span className="text-slate-500">FILE TYPE / SIZE</span>
-                    <span className="text-slate-300">
+                  <div className="flex justify-between border-b border-console-lineSoft pb-1.5">
+                    <span className="text-console-muted">FILE TYPE / SIZE</span>
+                    <span className="text-console-text tabular-nums">
                       {selectedDoc.file_type.toUpperCase()} ({Math.round(selectedDoc.file_size / 1024)} KB)
                     </span>
                   </div>
 
-                  <div className="flex justify-between border-b border-slate-900 pb-2">
-                    <span className="text-slate-500">SHA-256 CHECKSUM</span>
-                    <span className="text-slate-400 text-right truncate max-w-[130px]" title={selectedDoc.checksum_sha256}>
+                  <div className="flex justify-between border-b border-console-lineSoft pb-1.5">
+                    <span className="text-console-muted">SHA-256 CHECKSUM</span>
+                    <span className="text-console-text2 text-right truncate max-w-[130px] tabular-nums" title={selectedDoc.checksum_sha256}>
                       {selectedDoc.checksum_sha256 || 'N/A'}
                     </span>
                   </div>
 
-                  <div className="flex justify-between border-b border-slate-900 pb-2">
-                    <span className="text-slate-500">CASE AFFILIATION</span>
-                    <span className="text-slate-300 font-bold">{selectedDoc.case_id || 'Unassigned'}</span>
+                  <div className="flex justify-between border-b border-console-lineSoft pb-1.5">
+                    <span className="text-console-muted">CASE AFFILIATION</span>
+                    <span className="text-console-text font-bold tabular-nums">{selectedDoc.case_id || 'Unassigned'}</span>
                   </div>
 
                   <div className="flex justify-between">
-                    <span className="text-slate-500">EXTRACTION STATUS</span>
+                    <span className="text-console-muted">EXTRACTION STATUS</span>
                     <StatusBadge status={selectedDoc.status} />
                   </div>
                 </div>
 
                 {/* Content Panel (Evidence Viewer) */}
                 <div className="flex-1 flex flex-col min-h-[300px]">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-2 block">
-                    Extracted Text Representation
+                  <span className="text-[10px] font-mono tracking-[0.14em] text-console-muted uppercase mb-2 block">
+                    EXTRACTED TEXT REPRESENTATION
                   </span>
                   
-                  <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-lg p-3.5 overflow-y-auto max-h-[450px]">
+                  <div className="flex-1 bg-console-inset border border-console-line rounded p-3 overflow-y-auto max-h-[450px]">
                     {loadingContent ? (
                       <div className="flex flex-col items-center justify-center h-full py-10">
-                        <RefreshCw className="w-5 h-5 text-sky-400 animate-spin" />
-                        <span className="text-[10px] text-slate-500 font-mono mt-2">Loading content block...</span>
+                        <RefreshCw className="w-4 h-4 text-console-amber animate-spin" />
+                        <span className="text-[10px] text-console-muted font-mono mt-2">Loading content block...</span>
                       </div>
                     ) : contentError ? (
-                      <div className="text-rose-400 text-xs font-mono">{contentError}</div>
+                      <div className="text-console-red text-xs font-mono">{contentError}</div>
                     ) : extractedContent ? (
                       extractedContent.content ? (
-                        <pre className="text-xs text-slate-300 font-mono whitespace-pre-wrap leading-relaxed">
+                        <pre className="text-xs text-console-text font-mono whitespace-pre-wrap leading-relaxed">
                           {extractedContent.content}
                         </pre>
                       ) : (
-                        <div className="text-center py-20">
+                        <div className="text-center py-16 font-mono">
                           {extractedContent.extraction_status === 'not_implemented' ? (
                             <>
-                              <FileImage className="w-8 h-8 text-slate-700 mx-auto mb-2" />
-                              <p className="text-xs text-slate-500 font-sans italic">Image extraction is deferred. OCR will be integrated in a later phase.</p>
+                              <FileImage className="w-8 h-8 text-console-muted mx-auto mb-2" />
+                              <p className="text-xs text-console-muted italic">Image extraction deferred. OCR integrated in later phase.</p>
                             </>
                           ) : extractedContent.extraction_status === 'processed_with_no_text' ? (
                             <>
-                              <FileCode className="w-8 h-8 text-slate-700 mx-auto mb-2" />
-                              <p className="text-xs text-slate-500 font-sans italic">PDF file does not contain machine-readable text elements.</p>
+                              <FileCode className="w-8 h-8 text-console-muted mx-auto mb-2" />
+                              <p className="text-xs text-console-muted italic">PDF file does not contain machine-readable text elements.</p>
                             </>
                           ) : (
                             <>
-                              <Database className="w-8 h-8 text-slate-700 mx-auto mb-2" />
-                              <p className="text-xs text-slate-500 font-sans italic">
+                              <Database className="w-8 h-8 text-console-muted mx-auto mb-2" />
+                              <p className="text-xs text-console-muted italic">
                                 Document is parsed but text content is empty. 
-                                Click "Process" to attempt extraction if status is pending.
+                                Click "Process" to attempt extraction if pending.
                               </p>
                             </>
                           )}
                         </div>
                       )
                     ) : (
-                      <p className="text-xs text-slate-600 font-mono italic">No content loaded. Process document or select view.</p>
+                      <p className="text-xs text-console-muted font-mono italic">No content loaded. Select a document and click View.</p>
                     )}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-2">
-                <FileText className="w-10 h-10 text-slate-800" />
-                <p className="text-xs text-slate-500 italic max-w-[200px]">Select a document and click "View" to inspect evidence and metadata.</p>
+              <div className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-2 font-mono">
+                <FileText className="w-8 h-8 text-console-muted" />
+                <p className="text-xs text-console-muted italic max-w-[200px]">Select a document and click "View" to inspect evidence and metadata.</p>
               </div>
             )}
           </div>

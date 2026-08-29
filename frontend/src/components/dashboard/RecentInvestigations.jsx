@@ -39,39 +39,42 @@ export default function RecentInvestigations() {
   ];
 
   return (
-    <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col">
-      <div className="flex items-center gap-2 mb-4 border-b border-slate-900 pb-3">
-        <ClipboardList className="w-4 h-4 text-sky-400" />
-        <h2 className="text-sm font-semibold tracking-wider text-slate-400 uppercase">Recent Investigations</h2>
+    <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col">
+      <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-console-lineSoft">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="w-3.5 h-3.5 text-console-amber" />
+          <h2 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase">RECENT INVESTIGATIONS</h2>
+        </div>
+        <span className="text-[10px] font-mono tracking-[0.14em] text-console-muted uppercase">LOCAL · DETERMINISTIC</span>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-left border-collapse font-sans text-xs">
           <thead>
-            <tr className="border-b border-slate-800 text-xs font-mono uppercase text-slate-500">
-              <th className="py-2.5 px-3">Case ID</th>
-              <th className="py-2.5 px-3">Asset</th>
-              <th className="py-2.5 px-3">Issue / Diagnostics</th>
-              <th className="py-2.5 px-3">Severity</th>
-              <th className="py-2.5 px-3">Status</th>
-              <th className="py-2.5 px-3">Updated</th>
+            <tr className="border-b border-console-line text-[10px] font-mono uppercase tracking-[0.14em] text-console-muted bg-console-panelSolid">
+              <th className="py-2 px-3">CASE ID</th>
+              <th className="py-2 px-3">ASSET</th>
+              <th className="py-2 px-3">ISSUE / DIAGNOSTICS</th>
+              <th className="py-2 px-3">SEVERITY</th>
+              <th className="py-2 px-3">STATUS</th>
+              <th className="py-2 px-3">UPDATED</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-900 text-sm">
+          <tbody className="divide-y divide-console-lineSoft">
             {investigations.map((inv) => (
-              <tr key={inv.id} className="hover:bg-slate-900/20 transition-colors duration-150">
-                <td className="py-3 px-3 font-mono font-bold text-slate-400">{inv.id}</td>
-                <td className="py-3 px-3 font-medium text-slate-200">{inv.asset}</td>
-                <td className="py-3 px-3 text-slate-400 max-w-[280px] truncate" title={inv.issue}>
+              <tr key={inv.id} className="hover:bg-white/[.02] transition-colors duration-150">
+                <td className="py-2.5 px-3 font-mono font-bold text-console-text2 tabular-nums">{inv.id}</td>
+                <td className="py-2.5 px-3 font-medium text-console-text">{inv.asset}</td>
+                <td className="py-2.5 px-3 text-console-text2 max-w-[280px] truncate" title={inv.issue}>
                   {inv.issue}
                 </td>
-                <td className="py-3 px-3">
+                <td className="py-2.5 px-3">
                   <StatusBadge status={inv.severity} />
                 </td>
-                <td className="py-3 px-3">
+                <td className="py-2.5 px-3">
                   <StatusBadge status={inv.status} />
                 </td>
-                <td className="py-3 px-3 text-xs text-slate-500 font-mono">{inv.updated}</td>
+                <td className="py-2.5 px-3 text-[11px] text-console-muted font-mono tabular-nums">{inv.updated}</td>
               </tr>
             ))}
           </tbody>

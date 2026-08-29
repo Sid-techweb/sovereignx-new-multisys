@@ -9,11 +9,9 @@ import {
   Clock, 
   FileText, 
   Play, 
-  CheckCircle, 
   AlertTriangle,
   FolderOpen,
-  Info,
-  ExternalLink
+  Info
 } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
@@ -132,6 +130,12 @@ export default function KnowledgeBase() {
     }
   };
 
+  const getScoreBandColor = (scorePercent) => {
+    if (scorePercent >= 80) return 'text-console-green';
+    if (scorePercent >= 60) return 'text-console-amber';
+    return 'text-console-muted';
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader 
@@ -139,51 +143,51 @@ export default function KnowledgeBase() {
         description="Search asset schematics, equipment guidelines, and historic SOP references locally" 
       />
 
-      {/* RAG Status Block */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
-          <div className="p-2 bg-sky-500/10 rounded-lg text-sky-400">
-            <FolderOpen className="w-5 h-5" />
+      {/* RAG Status Block Stat Row */}
+      <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] grid grid-cols-1 md:grid-cols-4 gap-4 divide-y md:divide-y-0 md:divide-x divide-console-lineSoft font-mono">
+        <div className="flex items-center gap-3 pr-4 pt-2 md:pt-0">
+          <div className="p-2 bg-console-panelSolid rounded text-console-amber border border-console-line">
+            <FolderOpen className="w-4 h-4" />
           </div>
-          <div className="font-mono">
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Indexed Documents</div>
-            <div className="text-xl font-bold text-slate-200">
+          <div>
+            <div className="text-[10px] text-console-muted uppercase tracking-[0.14em]">INDEXED DOCUMENTS</div>
+            <div className="text-xl font-bold text-console-text tabular-nums">
               {loadingStats ? '...' : stats.documents_indexed}
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
-          <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400">
-            <Layers className="w-5 h-5" />
+        <div className="flex items-center gap-3 px-0 md:px-4 pt-2 md:pt-0">
+          <div className="p-2 bg-console-greenSoft rounded text-console-green border border-console-green/30">
+            <Layers className="w-4 h-4" />
           </div>
-          <div className="font-mono">
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Indexed Chunks</div>
-            <div className="text-xl font-bold text-slate-200">
+          <div>
+            <div className="text-[10px] text-console-muted uppercase tracking-[0.14em]">INDEXED CHUNKS</div>
+            <div className="text-xl font-bold text-console-text tabular-nums">
               {loadingStats ? '...' : stats.chunks_indexed}
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
-          <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400">
-            <Cpu className="w-5 h-5" />
+        <div className="flex items-center gap-3 px-0 md:px-4 pt-2 md:pt-0">
+          <div className="p-2 bg-console-panelSolid rounded text-console-amber border border-console-line">
+            <Cpu className="w-4 h-4" />
           </div>
-          <div className="font-mono">
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Embedding Model</div>
-            <div className="text-sm font-bold text-slate-200 truncate max-w-[150px]" title={stats.embedding_model}>
+          <div>
+            <div className="text-[10px] text-console-muted uppercase tracking-[0.14em]">EMBEDDING MODEL</div>
+            <div className="text-xs font-bold text-console-text truncate max-w-[150px]" title={stats.embedding_model}>
               {stats.embedding_model.split('/').pop()}
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
-          <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400">
-            <Database className="w-5 h-5" />
+        <div className="flex items-center gap-3 pl-0 md:pl-4 pt-2 md:pt-0">
+          <div className="p-2 bg-console-panelSolid rounded text-console-text2 border border-console-line">
+            <Database className="w-4 h-4" />
           </div>
-          <div className="font-mono">
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Vector Database</div>
-            <div className="text-xs font-bold text-slate-300">
+          <div>
+            <div className="text-[10px] text-console-muted uppercase tracking-[0.14em]">VECTOR DATABASE</div>
+            <div className="text-xs font-bold text-console-text">
               {stats.vector_store}
             </div>
           </div>
@@ -193,52 +197,52 @@ export default function KnowledgeBase() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Repository Registry Indexer */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-900 pb-3">
-              Indexing Coordinator
+          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] flex flex-col">
+            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft">
+              INDEXING COORDINATOR
             </h3>
             
             {loadingDocs ? (
               <div className="flex flex-col items-center justify-center py-10">
-                <div className="w-6 h-6 border-2 border-sky-500/20 border-t-sky-500 rounded-full animate-spin"></div>
-                <p className="text-[10px] text-slate-500 font-mono mt-2">Loading documents...</p>
+                <div className="w-5 h-5 border-2 border-console-amber/20 border-t-console-amber rounded-full animate-spin"></div>
+                <p className="text-[10px] text-console-muted font-mono mt-2">Loading documents...</p>
               </div>
             ) : docs.length > 0 ? (
-              <div className="space-y-3.5 max-h-[500px] overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {docs.map((doc) => {
                   const isProcessable = ['processed', 'processed_with_no_text'].includes(doc.status);
                   
                   return (
                     <div 
                       key={doc.document_id} 
-                      className="bg-slate-950/40 border border-slate-850 p-3 rounded-lg flex flex-col gap-2 font-mono text-[11px]"
+                      className="bg-console-inset border border-console-line p-3 rounded flex flex-col gap-2 font-mono text-[11px]"
                     >
                       <div className="flex justify-between items-start">
-                        <span className="text-slate-200 font-sans font-bold truncate max-w-[160px]" title={doc.filename}>
+                        <span className="text-console-text font-sans font-bold truncate max-w-[160px]" title={doc.filename}>
                           {doc.filename}
                         </span>
-                        <span className="text-[9px] text-slate-500 uppercase">{doc.file_type}</span>
+                        <span className="text-[9px] text-console-muted uppercase">{doc.file_type}</span>
                       </div>
                       
                       <div className="flex justify-between items-center text-[10px]">
-                        <span className="text-slate-500">Extraction Status</span>
+                        <span className="text-console-muted uppercase">EXTRACTION STATUS</span>
                         <StatusBadge status={doc.status} />
                       </div>
 
-                      <div className="flex justify-between items-center mt-1 border-t border-slate-900/80 pt-2">
-                        <span className="text-slate-500 text-[10px]">Case ID: {doc.case_id || 'Unassigned'}</span>
+                      <div className="flex justify-between items-center mt-1 border-t border-console-lineSoft pt-2">
+                        <span className="text-console-muted text-[10px] tabular-nums">Case ID: {doc.case_id || 'Unassigned'}</span>
                         
                         <button
                           onClick={() => handleIndexDocument(doc.document_id)}
                           disabled={indexingId === doc.document_id || !isProcessable}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded bg-sky-600 hover:bg-sky-500 disabled:bg-slate-850 disabled:text-slate-600 transition-colors text-slate-200"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded bg-console-amber text-[#0b1620] hover:brightness-105 disabled:opacity-40 disabled:pointer-events-none transition-all"
                         >
                           {indexingId === doc.document_id ? (
                             <Clock className="w-2.5 h-2.5 animate-spin" />
                           ) : (
                             <Play className="w-2.5 h-2.5" />
                           )}
-                          Index Chunks
+                          INDEX CHUNKS
                         </button>
                       </div>
                     </div>
@@ -247,8 +251,8 @@ export default function KnowledgeBase() {
               </div>
             ) : (
               <div className="text-center py-12 space-y-2">
-                <FileText className="w-8 h-8 text-slate-700 mx-auto" />
-                <p className="text-xs text-slate-500 italic">No files available to index. Visit the Documents intake page first.</p>
+                <FileText className="w-8 h-8 text-console-muted mx-auto" />
+                <p className="text-xs text-console-muted font-mono italic">No files available to index. Visit the Documents intake page first.</p>
               </div>
             )}
           </div>
@@ -257,21 +261,21 @@ export default function KnowledgeBase() {
         {/* Right Column: Search Console & Retrieved Evidence list */}
         <div className="lg:col-span-2 space-y-6">
           {/* Search Console Input */}
-          <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 border-b border-slate-900 pb-3">
-              Semantic Query Console
+          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px]">
+            <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase pb-3 mb-4 border-b border-console-lineSoft">
+              SEMANTIC QUERY CONSOLE
             </h3>
 
             <form onSubmit={handleSearch} className="space-y-4">
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-console-muted" />
                   <input
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search organization knowledge (e.g. Pump P-204 SOP limits)..."
-                    className="w-full bg-slate-950/70 border border-slate-850 focus:border-sky-500 rounded-lg py-2.5 pl-9 pr-4 text-sm text-slate-200 placeholder-slate-500 font-sans outline-none transition-colors"
+                    className="w-full bg-console-inset border border-console-line focus:border-console-amber rounded-md py-2 pl-9 pr-4 text-xs text-console-text placeholder-console-muted font-sans outline-none transition-colors"
                   />
                 </div>
                 
@@ -279,7 +283,7 @@ export default function KnowledgeBase() {
                   <select
                     value={topK}
                     onChange={(e) => setTopK(e.target.value)}
-                    className="w-full bg-slate-950/70 border border-slate-850 focus:border-sky-500 rounded-lg py-2.5 px-3 text-sm text-slate-400 font-mono outline-none"
+                    className="w-full bg-console-inset border border-console-line focus:border-console-amber rounded-md py-2 px-2 text-xs text-console-text font-mono outline-none"
                   >
                     <option value={3}>Top 3</option>
                     <option value={5}>Top 5</option>
@@ -291,36 +295,36 @@ export default function KnowledgeBase() {
                 <button
                   type="submit"
                   disabled={searching || !query.trim()}
-                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-600 font-semibold text-sm rounded-lg transition-colors flex items-center gap-1.5"
+                  className="px-4 py-2 bg-console-amber text-[#0b1620] hover:brightness-105 disabled:opacity-40 font-semibold text-xs rounded-md transition-all flex items-center gap-1.5 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-console-amber"
                 >
-                  {searching ? 'Searching...' : 'Search'}
+                  {searching ? 'SEARCHING...' : 'SEARCH'}
                 </button>
               </div>
             </form>
           </div>
 
           {/* Results Area */}
-          <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-5 shadow-lg min-h-[300px] flex flex-col">
-            <div className="flex justify-between items-center mb-4 border-b border-slate-900 pb-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Retrieved Evidence Records
+          <div className="bg-console-panel border border-console-line rounded-lg p-4 backdrop-blur-[2px] min-h-[300px] flex flex-col">
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-console-lineSoft">
+              <h3 className="text-[11px] font-mono tracking-[0.14em] text-console-muted uppercase">
+                RETRIEVED EVIDENCE RECORDS
               </h3>
               
               {(!searchResults || (searchResults.results && searchResults.results.length > 0)) && (
-                <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 bg-slate-950/40 px-2 py-1 rounded border border-slate-850">
-                  <Info className="w-3.5 h-3.5 text-slate-400" />
-                  <span>GROUNDED PASSAGES • NO LLM HALLUCINATIONS</span>
+                <div className="flex items-center gap-1.5 text-[10px] font-mono text-console-muted bg-console-inset px-2 py-1 rounded border border-console-line">
+                  <Info className="w-3.5 h-3.5 text-console-muted" />
+                  <span>GROUNDED PASSAGES · NO LLM HALLUCINATIONS</span>
                 </div>
               )}
             </div>
 
             {searching ? (
               <div className="flex-1 flex flex-col items-center justify-center py-20">
-                <div className="w-8 h-8 border-2 border-sky-500/20 border-t-sky-500 rounded-full animate-spin"></div>
-                <p className="text-xs text-slate-500 font-mono mt-3">Computing query vector on local CPU model...</p>
+                <div className="w-6 h-6 border-2 border-console-amber/20 border-t-console-amber rounded-full animate-spin"></div>
+                <p className="text-xs text-console-muted font-mono mt-3">Computing query vector on local CPU model...</p>
               </div>
             ) : searchError ? (
-              <div className="bg-rose-950/20 border border-rose-900/60 rounded-xl p-4 flex gap-3 text-rose-400 text-xs font-mono">
+              <div className="bg-console-red/10 border border-console-red/30 rounded p-4 flex gap-3 text-console-red text-xs font-mono">
                 <AlertTriangle className="w-5 h-5 flex-shrink-0" />
                 <div>
                   <div className="font-bold">Error In Retrieval</div>
@@ -329,52 +333,56 @@ export default function KnowledgeBase() {
               </div>
             ) : searchResults ? (
               searchResults.results.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="text-[10px] font-mono text-slate-500 mb-1">
-                    Found {searchResults.results.length} relevant evidence chunks matching query: "{searchResults.query}"
+                <div className="space-y-3">
+                  <div className="text-[10px] font-mono text-console-muted mb-1 uppercase">
+                    Found {searchResults.results.length} evidence chunks matching query: "{searchResults.query}"
                   </div>
                   
-                  {searchResults.results.map((res, index) => (
-                    <div 
-                      key={res.chunk_id} 
-                      className="bg-slate-950/50 border border-slate-850 rounded-xl p-4 space-y-3 shadow"
-                    >
-                      {/* Meta header */}
-                      <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 border-b border-slate-900/60 pb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-400 uppercase">Evidence #{index + 1}</span>
-                          <span className="text-slate-600">|</span>
-                          <span className="text-sky-400 font-bold truncate max-w-[180px]" title={res.filename}>
-                            {res.filename}
-                          </span>
-                          <span className="text-slate-600">|</span>
-                          <span>Page: {res.metadata.page_number || 'N/A'}</span>
-                          <span className="text-slate-600">|</span>
-                          <span>Chunk: {res.metadata.chunk_index}</span>
+                  {searchResults.results.map((res, index) => {
+                    const scorePercent = Number((res.score * 100).toFixed(1));
+                    const scoreColor = getScoreBandColor(scorePercent);
+                    return (
+                      <div 
+                        key={res.chunk_id} 
+                        className="bg-console-inset border border-console-line rounded p-3.5 space-y-2 shadow-sm"
+                      >
+                        {/* Meta header */}
+                        <div className="flex justify-between items-center text-[10px] font-mono text-console-muted border-b border-console-lineSoft pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-console-text2 uppercase">EVIDENCE #{index + 1}</span>
+                            <span className="text-console-line">/</span>
+                            <span className="text-console-amber font-bold truncate max-w-[180px]" title={res.filename}>
+                              {res.filename}
+                            </span>
+                            <span className="text-console-line">/</span>
+                            <span>PAGE: {res.metadata.page_number || 'N/A'}</span>
+                            <span className="text-console-line">/</span>
+                            <span>CHUNK: {res.metadata.chunk_index}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span>RELEVANCE:</span>
+                            <span className={`font-mono font-bold text-xs tabular-nums ${scoreColor}`}>{scorePercent}%</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <span>Relevance:</span>
-                          <span className="text-emerald-400 font-bold font-sans text-xs">{(res.score * 100).toFixed(1)}%</span>
+
+                        {/* Text chunk content */}
+                        <div className="text-xs text-console-text font-mono leading-relaxed bg-console-panelSolid p-3 rounded border border-console-lineSoft whitespace-pre-wrap">
+                          {res.content}
+                        </div>
+
+                        {/* Provenance Footer */}
+                        <div className="flex justify-between items-center text-[9px] font-mono text-console-muted pt-1">
+                          <span>SOURCE: {res.source.toUpperCase()}</span>
+                          <span className="tabular-nums">DOCUMENT ID: {res.document_id}</span>
                         </div>
                       </div>
-
-                      {/* Text chunk content */}
-                      <div className="text-xs text-slate-300 font-mono leading-relaxed bg-slate-950/70 p-3 rounded-lg border border-slate-900 whitespace-pre-wrap">
-                        {res.content}
-                      </div>
-
-                      {/* Provenance Footer */}
-                      <div className="flex justify-between items-center text-[9px] font-mono text-slate-600 pt-1">
-                        <span>SOURCE: {res.source.toUpperCase()}</span>
-                        <span>DOCUMENT ID: {res.document_id}</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-2">
-                  <Database className="w-8 h-8 text-slate-700 mx-auto" />
-                  <p className="text-xs text-slate-500 italic">
+                <div className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-2 font-mono">
+                  <Database className="w-8 h-8 text-console-muted mx-auto" />
+                  <p className="text-xs text-console-muted italic">
                     {searchResults.below_threshold
                       ? "No sufficiently relevant evidence found in the knowledge base for this query."
                       : "No matching evidence found. Ensure documents are processed and indexed."}
@@ -382,9 +390,9 @@ export default function KnowledgeBase() {
                 </div>
               )
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-2">
-                <Search className="w-10 h-10 text-slate-800" />
-                <p className="text-xs text-slate-500 italic max-w-sm">Enter a search query in the semantic query console above to retrieve grounded organizational evidence.</p>
+              <div className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-2 font-mono">
+                <Search className="w-8 h-8 text-console-muted" />
+                <p className="text-xs text-console-muted italic max-w-sm">Enter a search query in the semantic query console above to retrieve grounded organizational evidence.</p>
               </div>
             )}
           </div>
