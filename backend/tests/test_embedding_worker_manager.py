@@ -250,7 +250,7 @@ class TestHealthAfterWorkerCrash(unittest.TestCase):
         original_manager = ewm._manager
         ewm._manager = fake_manager
         try:
-            client = TestClient(app)
+            client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
             res = client.get("/health")
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.json()["status"], "ok")

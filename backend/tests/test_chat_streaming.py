@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
+from app.config import settings
 from app.database import get_db
 from app.chat.models import ChatConversation, ChatMessage
 from app.gateway import get_gateway, StreamChunk
@@ -55,7 +56,7 @@ class TestChatStreamingEndpoint(unittest.TestCase):
         self.mock_gateway = MagicMock()
         app.dependency_overrides[get_db] = override_get_db
         app.dependency_overrides[get_gateway] = lambda: self.mock_gateway
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
 
         # See test_chat.py's setUp for why this is patched directly rather
         # than via dependency_overrides.
@@ -311,7 +312,7 @@ class TestNonStreamingUnaffected(unittest.TestCase):
         self.mock_gateway.chat_completion = AsyncMock(return_value="A non-streamed answer.")
         app.dependency_overrides[get_db] = override_get_db
         app.dependency_overrides[get_gateway] = lambda: self.mock_gateway
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
 
         self.mock_resource_manager = MagicMock()
         self.mock_resource_manager.ensure_embedding_available.return_value = None

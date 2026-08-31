@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
+from app.config import settings
 from app.database import get_db
 from app.chat.models import ChatConversation, ChatMessage
 from app.gateway import get_gateway
@@ -40,7 +41,7 @@ class TestChatEndpoints(unittest.TestCase):
 
         app.dependency_overrides[get_db] = override_get_db
         app.dependency_overrides[get_gateway] = lambda: self.mock_gateway
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
 
         # ModelResourceManager isn't a FastAPI dependency (chat/service.py
         # calls it directly), so it can't go through dependency_overrides --

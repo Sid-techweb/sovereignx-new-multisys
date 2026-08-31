@@ -7,12 +7,14 @@ import {
 } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000';
+const API_KEY = import.meta.env.VITE_API_KEY || 'sovereignx-demo-key-2026';
+const AUTH_HEADERS = { 'X-API-Key': API_KEY };
 
 const ROUTE_LABELS = {
-  GENERAL_CHAT: { label: 'General', icon: Sparkles, color: 'text-sky-400' },
-  DOCUMENT_RAG: { label: 'Document', icon: FileText, color: 'text-emerald-400' },
-  MULTIMODAL: { label: 'Image', icon: ImageIcon, color: 'text-amber-400' },
-  EXISTING_TOOL_FLOW: { label: 'Tool', icon: Wrench, color: 'text-violet-400' },
+  GENERAL_CHAT: { label: 'General', icon: Sparkles, color: 'text-console-amber' },
+  DOCUMENT_RAG: { label: 'Document', icon: FileText, color: 'text-console-green' },
+  MULTIMODAL: { label: 'Image', icon: ImageIcon, color: 'text-console-amber' },
+  EXISTING_TOOL_FLOW: { label: 'Tool', icon: Wrench, color: 'text-console-text2' },
 };
 
 export default function Chat({ modelConfig, isConnected, activeConversationId, setActiveConversationId }) {
@@ -52,7 +54,7 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
   const fetchConversations = async () => {
     setLoadingConversations(true);
     try {
-      const res = await fetch(`${API_BASE}/chat/conversations`);
+      const res = await fetch(`${API_BASE}/chat/conversations`, { headers: AUTH_HEADERS });
       if (res.ok) {
         setConversations(await res.json());
       }
@@ -92,7 +94,7 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
     setError(null);
     setStreamingMessage(null);
 
-    fetch(`${API_BASE}/chat/conversations/${activeConversationId}/messages`)
+    fetch(`${API_BASE}/chat/conversations/${activeConversationId}/messages`, { headers: AUTH_HEADERS })
       .then(async (res) => {
         if (res.status === 404) throw new Error('__NOT_FOUND__');
         if (!res.ok) throw new Error('__UNAVAILABLE__');
@@ -153,14 +155,21 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const uploadRes = await fetch(`${API_BASE}/documents/upload`, { method: 'POST', body: formData });
+      const uploadRes = await fetch(`${API_BASE}/documents/upload`, {
+        method: 'POST',
+        headers: AUTH_HEADERS,
+        body: formData,
+      });
       if (!uploadRes.ok) {
         const errData = await uploadRes.json().catch(() => ({}));
         throw new Error(errData.detail || 'Upload failed.');
       }
       const doc = await uploadRes.json();
 
-      const processRes = await fetch(`${API_BASE}/documents/${doc.document_id}/process`, { method: 'POST' });
+      const processRes = await fetch(`${API_BASE}/documents/${doc.document_id}/process`, {
+        method: 'POST',
+        headers: AUTH_HEADERS,
+      });
       if (!processRes.ok) {
         const errData = await processRes.json().catch(() => ({}));
         throw new Error(errData.detail || 'Document processing failed.');
@@ -192,7 +201,7 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
     let createdNewConversation = false;
     try {
       if (!convoId) {
-        const createRes = await fetch(`${API_BASE}/chat/conversations`, { method: 'POST' });
+        const createRes = await fetch(`${API_BASE}/chat/conversations`, { method: 'POST', headers: AUTH_HEADERS });
         if (!createRes.ok) throw new Error('Could not start a new conversation.');
         const created = await createRes.json();
         convoId = created.conversation_id;
@@ -211,7 +220,7 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
     try {
       const res = await fetch(`${API_BASE}/chat/conversations/${convoId}/messages/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
         body: JSON.stringify({ message, document_id: attachment?.document_id || null }),
       });
 
@@ -303,13 +312,13 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
             <button
               onClick={() => setHistoryCollapsed(v => !v)}
               title={historyCollapsed ? 'Show history' : 'Hide history'}
-              className="flex items-center justify-center w-8 h-8 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-400 transition-colors"
+              className="flex items-center justify-center w-8 h-8 bg-white/[.05] hover:bg-white/[.1] border border-console-line rounded text-console-text2 transition-all"
             >
               {historyCollapsed ? <PanelLeft className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
             </button>
             <button
               onClick={startNewChat}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white/[.05] hover:bg-white/[.1] border border-console-line rounded text-xs font-mono font-semibold text-console-text transition-all"
             >
               <Plus className="w-3.5 h-3.5" /> New Chat
             </button>
@@ -317,7 +326,7 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
         }
       />
 
-      <div className="flex-1 min-h-0 bg-slate-900/30 border border-slate-800 rounded-xl flex overflow-hidden shadow-lg">
+      <div className="flex-1 min-h-0 bg-console-panel border border-console-line rounded-lg flex overflow-hidden backdrop-blur-[2px]">
         <ChatHistoryPanel
           conversations={conversations}
           loading={loadingConversations}
@@ -331,15 +340,15 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
           {/* Message list */}
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
             {loadingHistory && (
-              <div className="flex items-center gap-2 text-slate-500 text-xs font-mono pl-1">
+              <div className="flex items-center gap-2 text-console-muted text-xs font-mono pl-1">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading conversation...
               </div>
             )}
 
             {!loadingHistory && messages.length === 0 && !streamingMessage && (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-3 py-16">
-                <MessageSquare className="w-10 h-10 text-slate-800" />
-                <p className="text-sm text-slate-500 max-w-sm">
+                <MessageSquare className="w-10 h-10 text-console-line" />
+                <p className="text-sm text-console-muted max-w-sm font-sans">
                   Start a new conversation. Ask a general question, or attach a PDF/image to ground the answer in it.
                 </p>
               </div>
@@ -355,13 +364,13 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
             )}
 
             {sending && !(streamingMessage && streamingMessage.content) && (
-              <div className="flex items-center gap-2 text-slate-500 text-xs font-mono pl-1">
+              <div className="flex items-center gap-2 text-console-muted text-xs font-mono pl-1">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Generating response...
               </div>
             )}
 
             {error && (
-              <div className="bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 flex gap-2.5 text-rose-400 text-sm">
+              <div className="bg-console-red/10 border border-console-red/30 rounded-lg p-3 flex gap-2.5 text-console-red text-xs font-mono">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
@@ -370,12 +379,12 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
           </div>
 
           {/* Composer */}
-          <div className="border-t border-slate-800 p-4 bg-slate-950/30">
+          <div className="border-t border-console-line p-4 bg-console-inset">
             {attachedDoc && (
-              <div className="mb-2 inline-flex items-center gap-2 bg-slate-800/80 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300">
-                <Paperclip className="w-3.5 h-3.5 text-sky-400" />
+              <div className="mb-2 inline-flex items-center gap-2 bg-console-panelSolid border border-console-line rounded px-2.5 py-1.5 text-xs text-console-text2 font-mono">
+                <Paperclip className="w-3.5 h-3.5 text-console-amber" />
                 <span className="max-w-[220px] truncate">{attachedDoc.filename}</span>
-                <button type="button" onClick={() => setAttachedDoc(null)} className="text-slate-500 hover:text-slate-300">
+                <button type="button" onClick={() => setAttachedDoc(null)} className="text-console-muted hover:text-console-text">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -394,7 +403,7 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
                 onClick={() => fileInputRef.current?.click()}
                 disabled={attaching || sending}
                 title="Attach a PDF, CSV, or image (optional)"
-                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 text-slate-400 transition-colors"
+                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded bg-white/[.05] hover:bg-white/[.1] disabled:opacity-50 border border-console-line text-console-text2 transition-all"
               >
                 {attaching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
               </button>
@@ -409,17 +418,17 @@ export default function Chat({ modelConfig, isConnected, activeConversationId, s
                 }}
                 placeholder="Ask anything -- no document required..."
                 rows={1}
-                className="flex-1 resize-none bg-slate-950/80 border border-slate-800 rounded-lg px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 max-h-32"
+                className="flex-1 resize-none bg-console-panelSolid border border-console-line rounded px-3.5 py-2.5 text-sm text-console-text font-sans focus:outline-none focus:ring-1 focus:ring-console-amber focus:border-console-amber max-h-32"
               />
               <button
                 type="submit"
                 disabled={sending || !input.trim() || !isConnected}
-                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-sky-600 hover:bg-sky-500 disabled:bg-slate-850 disabled:text-slate-600 text-white transition-colors"
+                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded bg-console-amber hover:brightness-105 disabled:opacity-40 disabled:hover:brightness-100 text-[#0b1620] transition-all"
               >
                 {sending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </button>
             </form>
-            <p className="text-[10px] text-slate-600 font-mono mt-2">
+            <p className="text-[10px] text-console-muted font-mono mt-2">
               Provider: {modelConfig?.provider || 'unknown'} · Model: {modelConfig?.model || 'unknown'}
             </p>
           </div>
@@ -436,20 +445,20 @@ function MessageBubble({ msg, isStreaming = false }) {
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[75%] rounded-xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+      <div className={`max-w-[75%] rounded-lg px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap font-sans ${
         isUser
-          ? 'bg-sky-600/90 text-white'
-          : 'bg-slate-800/70 border border-slate-800 text-slate-200'
+          ? 'bg-console-amber text-[#0b1620] font-medium'
+          : 'bg-console-panelSolid/80 border border-console-line text-console-text'
       }`}>
         {msg.content}
-        {isStreaming && <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-sky-400 align-middle animate-pulse" />}
+        {isStreaming && <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-console-amber align-middle animate-pulse" />}
 
         {msg.incomplete && (
-          <div className="mt-1.5 text-[10px] font-mono text-amber-400/80">Response was interrupted.</div>
+          <div className="mt-1.5 text-[10px] font-mono text-console-amber/80">Response was interrupted.</div>
         )}
 
         {!isUser && !isStreaming && (routeMeta || (msg.sources && msg.sources.length > 0) || msg.timings) && (
-          <div className="mt-2 pt-2 border-t border-slate-700/60 flex flex-wrap items-center gap-2 text-[10px] font-mono text-slate-500">
+          <div className="mt-2 pt-2 border-t border-console-lineSoft flex flex-wrap items-center gap-2 text-[10px] font-mono text-console-muted">
             {routeMeta && (
               <span className={`inline-flex items-center gap-1 ${routeMeta.color}`}>
                 {RouteIcon && <RouteIcon className="w-3 h-3" />} {routeMeta.label}
