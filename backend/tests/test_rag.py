@@ -6,7 +6,7 @@ from app.config import settings
 import numpy as np
 
 from app.rag.chunker import chunk_document, split_text
-from app.rag.embeddings import BGEM3EmbeddingProvider
+from app.rag.embeddings import BGEM3EmbeddingProvider, _BGEM3ModelRunner
 from app.rag.exceptions import EmbeddingModelUnavailableError, IndexingError, SearchQueryError
 from app.rag.indexer import KnowledgeBaseIndexer
 from app.rag.retriever import KnowledgeBaseRetriever
@@ -68,6 +68,23 @@ class TestRAGChunker(unittest.TestCase):
 
 
 class TestRAGEmbeddings(unittest.TestCase):
+    """
+    Tests the actual in-process BGE-M3 loading/encode logic, which now
+    lives in `_BGEM3ModelRunner` (only ever constructed inside the isolated
+    embedding worker process -- see app/rag/embedding_worker.py and its
+    module docstring for why). `BGEM3EmbeddingProvider` itself is now the
+    worker-backed client used by the rest of the app; its behavior is
+    covered separately in test_embedding_worker_manager.py.
+    """
+    def setUp(self):
+        # True process-wide singleton in production; tests must explicitly
+        # reset it to get an isolated, independently-mockable instance per
+        # test rather than leaking state between them.
+        _BGEM3ModelRunner.reset_for_testing()
+
+    def tearDown(self):
+        _BGEM3ModelRunner.reset_for_testing()
+
     @patch("sentence_transformers.sentence_transformer.modules.Transformer")
     @patch("sentence_transformers.sentence_transformer.modules.Pooling")
     @patch("sentence_transformers.SentenceTransformer")
@@ -76,13 +93,13 @@ class TestRAGEmbeddings(unittest.TestCase):
         mock_model.get_sentence_embedding_dimension.return_value = 1024
         mock_model.get_embedding_dimension.return_value = 1024
         mock_transformer_cls.return_value = mock_model
-        
+
         mock_transformer_instance = MagicMock()
         mock_transformer_instance.get_embedding_dimension.return_value = 1024
         mock_module_transformer_cls.return_value = mock_transformer_instance
 
-        provider = BGEM3EmbeddingProvider()
-        provider.initialize()
+        runner = _BGEM3ModelRunner()
+        runner.initialize()
 
         # Check constructor arguments: model_kwargs={'local_files_only': True}
         mock_module_transformer_cls.assert_called_once_with(
@@ -91,7 +108,7 @@ class TestRAGEmbeddings(unittest.TestCase):
             processor_kwargs={"local_files_only": True},
             config_kwargs={"local_files_only": True}
         )
-        self.assertTrue(provider._initialized)
+        self.assertTrue(runner._initialized)
 
     @patch("sentence_transformers.sentence_transformer.modules.Transformer")
     @patch("sentence_transformers.sentence_transformer.modules.Pooling")
@@ -101,22 +118,22 @@ class TestRAGEmbeddings(unittest.TestCase):
         mock_model.get_sentence_embedding_dimension.return_value = 768  # Wrong dimension (pgvector expects 1024)
         mock_model.get_embedding_dimension.return_value = 768
         mock_transformer_cls.return_value = mock_model
-        
+
         mock_transformer_instance = MagicMock()
         mock_transformer_instance.get_embedding_dimension.return_value = 768
         mock_module_transformer_cls.return_value = mock_transformer_instance
 
-        provider = BGEM3EmbeddingProvider()
+        runner = _BGEM3ModelRunner()
         with self.assertRaises(EmbeddingModelUnavailableError) as context:
-            provider.initialize()
+            runner.initialize()
         self.assertIn("does not match database schema dimension", str(context.exception))
 
     @patch("sentence_transformers.sentence_transformer.modules.Transformer", side_effect=OSError("Model not found in cache"))
     def test_bgem3_fails_cleanly_when_offline_and_missing(self, mock_module_transformer_cls):
-        provider = BGEM3EmbeddingProvider()
+        runner = _BGEM3ModelRunner()
         with self.assertRaises(EmbeddingModelUnavailableError) as context:
-            provider.initialize()
-        
+            runner.initialize()
+
         self.assertIn("not available locally", str(context.exception))
         # Ensure constructor was still called with local_files_only=True
         mock_module_transformer_cls.assert_called_once_with(
@@ -135,14 +152,14 @@ class TestRAGEmbeddings(unittest.TestCase):
         mock_model.get_embedding_dimension.return_value = 1024
         mock_model.encode.return_value = np.zeros(1024)
         mock_transformer_cls.return_value = mock_model
-        
+
         mock_transformer_instance = MagicMock()
         mock_transformer_instance.get_embedding_dimension.return_value = 1024
         mock_module_transformer_cls.return_value = mock_transformer_instance
 
-        provider = BGEM3EmbeddingProvider()
-        emb = provider.get_embedding("Test sentence")
-        
+        runner = _BGEM3ModelRunner()
+        emb = runner.get_embedding("Test sentence")
+
         self.assertEqual(len(emb), 1024)
         self.assertTrue(isinstance(emb[0], float))
 
@@ -329,7 +346,18 @@ class TestRAGAPIAndCORS(unittest.TestCase):
         from app.database import get_db
         app.dependency_overrides[get_db] = lambda: self.mock_db
 
+        # api/rag.py's index_document now coordinates with ModelResourceManager
+        # before embedding (see model_resource_manager.py). Not a FastAPI
+        # dependency, so patched directly rather than via dependency_overrides.
+        self.mock_resource_manager = MagicMock()
+        self.mock_resource_manager.ensure_embedding_available.return_value = None
+        self._resource_manager_patcher = patch(
+            "app.api.rag.get_resource_manager", return_value=self.mock_resource_manager
+        )
+        self._resource_manager_patcher.start()
+
     def tearDown(self):
+        self._resource_manager_patcher.stop()
         from app.database import get_db
         if get_db in app.dependency_overrides:
             del app.dependency_overrides[get_db]
@@ -345,8 +373,17 @@ class TestRAGAPIAndCORS(unittest.TestCase):
             self.assertEqual(response.json()["chunks_indexed"], 10)
             mock_init.assert_not_called()
 
-    @patch("sentence_transformers.SentenceTransformer", side_effect=OSError("Model not found"))
-    def test_search_missing_bgem3_returns_503_and_cors(self, mock_transformer_cls):
+    @patch(
+        "app.rag.embeddings.BGEM3EmbeddingProvider.get_embedding",
+        side_effect=EmbeddingModelUnavailableError("Embedding model 'BAAI/bge-m3' is not available locally."),
+    )
+    def test_search_missing_bgem3_returns_503_and_cors(self, mock_get_embedding):
+        # BGE-M3 now loads inside an isolated worker process (see
+        # embedding_worker_manager.py) rather than in-process, so an
+        # "unavailable" condition is simulated at the client-interface
+        # level (BGEM3EmbeddingProvider) rather than by mocking
+        # sentence-transformers directly -- the worker's own init/crash
+        # handling is covered separately in test_embedding_worker_manager.py.
         response = self.client.post(
             "/knowledge-base/search",
             json={"query": "pump vibration", "top_k": 3},

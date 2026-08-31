@@ -1,19 +1,21 @@
 import React from 'react';
-import { 
-  Shield, 
-  LayoutDashboard, 
-  Briefcase, 
-  FileText, 
-  Activity, 
-  Database, 
-  ClipboardList, 
-  Bot, 
-  Settings 
+import {
+  Shield,
+  LayoutDashboard,
+  Briefcase,
+  FileText,
+  Activity,
+  Database,
+  ClipboardList,
+  Bot,
+  Settings,
+  MessageSquare
 } from 'lucide-react';
 
 export default function Sidebar({ currentPage, onPageChange, openCasesCount = 0 }) {
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'chat', label: 'Chat', icon: MessageSquare },
     { id: 'cases', label: 'Cases', icon: Briefcase },
     { id: 'documents', label: 'Documents', icon: FileText },
     { id: 'investigation', label: 'Investigation', icon: Activity },

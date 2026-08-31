@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
 
 class ChatRequest(BaseModel):
     prompt: str
@@ -8,3 +9,40 @@ class ChatResponse(BaseModel):
     sop_reference: str
     confidence: float
     recommended_action: str
+
+
+# --- General-purpose conversational chat (RAG-optional) ---
+
+class ChatTurnRequest(BaseModel):
+    message: str = Field(..., min_length=1, description="The user's chat message")
+    document_id: Optional[str] = Field(
+        None, description="Document explicitly attached/referenced for this turn, if any"
+    )
+
+class ChatTurnResponse(BaseModel):
+    conversation_id: str
+    message_id: str
+    route: str
+    answer: str
+    retrieved_chunks: List[Dict[str, Any]] = []
+    tool_executions: List[Dict[str, Any]] = []
+    rag_degraded_reason: Optional[str] = None
+    timings_ms: Dict[str, float] = {}
+
+class ChatMessageOut(BaseModel):
+    message_id: str
+    role: str
+    content: str
+    route: Optional[str] = None
+    document_id: Optional[str] = None
+    sources: Optional[List[Dict[str, Any]]] = None
+    created_at: str
+
+class ChatConversationOut(BaseModel):
+    conversation_id: str
+    title: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+class ChatConversationCreateResponse(BaseModel):
+    conversation_id: str

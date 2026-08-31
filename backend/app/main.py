@@ -7,7 +7,7 @@ from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import health, models, agents, documents, rag, tools, reports, sovereignty, cases
+from app.api import health, models, agents, documents, rag, tools, reports, sovereignty, cases, chat
 from app.api.auth import verify_api_key
 from app.services.sovereignty import apply_monkeypatching
 apply_monkeypatching()
@@ -39,6 +39,7 @@ try:
     from app.database import engine, Base
     from app.rag.models import SQLDocumentChunk
     from app.models.cases_reports import SQLCase, SQLReportRecord
+    from app.chat.models import ChatConversation, ChatMessage
     from sqlalchemy import text
     Base.metadata.create_all(bind=engine)
     
@@ -177,16 +178,33 @@ app.include_router(rag.router, dependencies=[Depends(verify_api_key)])
 app.include_router(tools.router, dependencies=[Depends(verify_api_key)])
 app.include_router(reports.router, dependencies=[Depends(verify_api_key)])
 app.include_router(cases.router, dependencies=[Depends(verify_api_key)])
+app.include_router(chat.router, dependencies=[Depends(verify_api_key)])
 app.include_router(sovereignty.router)
 
-# Preload/initialize BGE-M3 embedding model exactly once at application startup
+# Preload/initialize BGE-M3 embedding model exactly once at application startup.
+# BGE-M3 runs in an isolated worker process (see app/rag/embedding_worker_manager.py):
+# a native PyTorch fault there cannot terminate this FastAPI process. This call
+# spawns that worker and waits (bounded) for it to report ready; failure here is
+# intentionally non-fatal to backend startup -- embeddings/DOCUMENT_RAG degrade to
+# a clean error, but GENERAL_CHAT and the rest of the backend remain unaffected.
 @app.on_event("startup")
 def startup_event():
-    logger.info("FastAPI startup: Preloading local BGE-M3 embedding model...")
+    logger.info("FastAPI startup: spawning isolated BGE-M3 embedding worker...")
     try:
         from app.rag.embeddings import BGEM3EmbeddingProvider
         BGEM3EmbeddingProvider().initialize()
-        logger.info("FastAPI startup: BGE-M3 preloaded successfully.")
+        logger.info("FastAPI startup: BGE-M3 embedding worker ready.")
     except Exception as e:
-        logger.error(f"FastAPI startup: Failed to preload BGE-M3: {e}")
+        logger.error(f"FastAPI startup: BGE-M3 embedding worker not ready: {e}")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    logger.info("FastAPI shutdown: stopping BGE-M3 embedding worker...")
+    try:
+        from app.rag.embedding_worker_manager import get_worker_manager
+        from app.config import settings as _settings
+        get_worker_manager(_settings.EMBEDDING_MODEL).shutdown()
+    except Exception as e:
+        logger.warning(f"FastAPI shutdown: error stopping BGE-M3 embedding worker: {e}")
 

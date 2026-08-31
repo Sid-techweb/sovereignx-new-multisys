@@ -11,6 +11,7 @@ from app.rag.retriever import KnowledgeBaseRetriever
 from app.rag.exceptions import IndexingError, SearchQueryError, EmbeddingModelUnavailableError, DatabaseConnectionError
 from app.services.metadata_store import DocumentMetadataStore
 from app.services.storage import LocalDocumentStorage
+from app.services.model_resource_manager import get_resource_manager
 
 router = APIRouter(prefix="/knowledge-base", tags=["RAG & Knowledge Base"])
 
@@ -66,6 +67,10 @@ def index_document(document_id: str, db: Session = Depends(get_db)):
 
     # 3. Index document
     try:
+        # Ingestion embeds the whole document in one batched call (see
+        # KnowledgeBaseIndexer), so this ensures the worker is up once per
+        # document, not per chunk. Lock-coordinated against Qwen-preemption.
+        get_resource_manager().ensure_embedding_available(timeout=settings.BGE_WORKER_STARTUP_TIMEOUT_SECONDS)
         embedder = BGEM3EmbeddingProvider()
         indexer = KnowledgeBaseIndexer(db, embedder)
         chunks_count = indexer.index_document(extracted_doc)
