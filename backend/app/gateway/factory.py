@@ -19,7 +19,8 @@ def get_gateway() -> ModelGateway:
     elif provider == "ollama":
         return OllamaGateway(
             base_url=settings.OLLAMA_BASE_URL,
-            model_name=settings.MODEL_NAME
+            model_name=settings.MODEL_NAME,
+            keep_alive=settings.OLLAMA_KEEP_ALIVE
         )
     else:
         raise UnsupportedProviderError(f"Unsupported model provider: {settings.MODEL_PROVIDER}")

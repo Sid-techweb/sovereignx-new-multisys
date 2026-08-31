@@ -1,4 +1,4 @@
-from app.gateway.base import ModelGateway
+from app.gateway.base import ModelGateway, StreamChunk
 from app.gateway.mock import MockGateway
 from app.gateway.ollama import OllamaGateway
 from app.gateway.factory import get_gateway

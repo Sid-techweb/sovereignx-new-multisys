@@ -36,10 +36,24 @@ async def get_models():
         except Exception:
             status = "offline"
             
+    # Embedding worker status is independent of LLM status above -- report
+    # it without ever downgrading `status` (backend/LLM health) because of it.
+    embedding_worker_status = None
+    embedding_worker_pid = None
+    try:
+        from app.rag.embedding_worker_manager import get_worker_manager
+        worker_info = get_worker_manager(settings.EMBEDDING_MODEL).get_status()
+        embedding_worker_status = worker_info["status"]
+        embedding_worker_pid = worker_info["worker_pid"]
+    except Exception:
+        embedding_worker_status = "UNKNOWN"
+
     return ModelInfoResponse(
         provider=provider,
         model=model,
-        status=status
+        status=status,
+        embedding_worker_status=embedding_worker_status,
+        embedding_worker_pid=embedding_worker_pid,
     )
 
 @router.post("/models/chat", response_model=ChatResponse)

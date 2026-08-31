@@ -1,16 +1,21 @@
 import json
 import logging
+from typing import List, Dict, Optional, AsyncGenerator
 import httpx
-from app.gateway.base import ModelGateway
+from app.gateway.base import ModelGateway, StreamChunk
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse
 from app.gateway.exceptions import OllamaUnavailableError, ProviderExecutionError
 
 logger = logging.getLogger("sovereignx")
 
 class OllamaGateway(ModelGateway):
-    def __init__(self, base_url: str, model_name: str):
+    def __init__(self, base_url: str, model_name: str, keep_alive: Optional[str] = None):
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name or "qwen2.5:7b"
+        # Ollama duration string (e.g. "30m") controlling how long the model
+        # stays resident after a request. None lets Ollama use its own
+        # default (5 minutes) rather than sending the field at all.
+        self.keep_alive = keep_alive
 
     async def generate(self, prompt: str, system_prompt: str = None) -> str:
         """
@@ -100,3 +105,126 @@ class OllamaGateway(ModelGateway):
         except Exception as e:
             logger.error(f"Error parsing Ollama response: {str(e)}")
             raise ProviderExecutionError(f"Failed to process model response: {str(e)}") from e
+
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        options: Optional[Dict] = None
+    ) -> str:
+        """
+        Sends a multi-turn conversation to the local Ollama server's native
+        /api/chat endpoint, which understands role-tagged message history
+        directly (no manual prompt flattening required).
+        """
+        url = f"{self.base_url}/api/chat"
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": 1024,
+                **(options or {})
+            }
+        }
+        if self.keep_alive is not None:
+            payload["keep_alive"] = self.keep_alive
+
+        try:
+            logger.info(f"Sending chat completion to Ollama model '{self.model_name}' ({len(messages)} messages)")
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                res = await client.post(url, json=payload)
+
+            if res.status_code != 200:
+                logger.error(f"Ollama returned HTTP error status: {res.status_code}")
+                raise ProviderExecutionError(f"Ollama server returned HTTP {res.status_code}: {res.text}")
+
+            data = res.json()
+            return data.get("message", {}).get("content", "")
+        except httpx.RequestError as e:
+            logger.error(f"Failed to connect to Ollama server: {str(e)}")
+            raise OllamaUnavailableError(
+                f"Could not connect to Ollama server at {self.base_url}. "
+                "Ensure Ollama is running and server is healthy."
+            ) from e
+        except (OllamaUnavailableError, ProviderExecutionError):
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error calling Ollama chat completion: {str(e)}")
+            raise ProviderExecutionError(f"Ollama chat completion failed: {str(e)}") from e
+
+    async def stream_chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        options: Optional[Dict] = None
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """
+        Sends a multi-turn conversation to Ollama's /api/chat with stream=true
+        and yields incremental StreamChunks as tokens arrive. The final chunk
+        has done=True and carries Ollama's own timing/token-count metadata
+        (converted to milliseconds), so callers do not lose the ability to
+        diagnose latency just because the response is streamed.
+        """
+        url = f"{self.base_url}/api/chat"
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": True,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": 1024,
+                **(options or {})
+            }
+        }
+        if self.keep_alive is not None:
+            payload["keep_alive"] = self.keep_alive
+
+        logger.info(f"Sending streaming chat completion to Ollama model '{self.model_name}' ({len(messages)} messages)")
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                async with client.stream("POST", url, json=payload) as res:
+                    if res.status_code != 200:
+                        body = await res.aread()
+                        logger.error(f"Ollama returned HTTP error status: {res.status_code}")
+                        raise ProviderExecutionError(f"Ollama server returned HTTP {res.status_code}: {body!r}")
+
+                    async for line in res.aiter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            data = json.loads(line)
+                        except json.JSONDecodeError:
+                            logger.warning(f"Skipping unparseable Ollama stream line: {line!r}")
+                            continue
+
+                        if data.get("error"):
+                            raise ProviderExecutionError(f"Ollama streaming error: {data['error']}")
+
+                        delta = data.get("message", {}).get("content", "")
+                        is_done = bool(data.get("done"))
+
+                        if not is_done:
+                            if delta:
+                                yield StreamChunk(content=delta, done=False, metadata=None)
+                            continue
+
+                        metadata = {
+                            "total_duration_ms": data.get("total_duration", 0) / 1e6,
+                            "load_duration_ms": data.get("load_duration", 0) / 1e6,
+                            "prompt_eval_duration_ms": data.get("prompt_eval_duration", 0) / 1e6,
+                            "eval_duration_ms": data.get("eval_duration", 0) / 1e6,
+                            "prompt_eval_count": data.get("prompt_eval_count", 0),
+                            "eval_count": data.get("eval_count", 0),
+                        }
+                        yield StreamChunk(content=delta, done=True, metadata=metadata)
+        except httpx.RequestError as e:
+            logger.error(f"Failed to connect to Ollama server: {str(e)}")
+            raise OllamaUnavailableError(
+                f"Could not connect to Ollama server at {self.base_url}. "
+                "Ensure Ollama is running and server is healthy."
+            ) from e
+        except (OllamaUnavailableError, ProviderExecutionError):
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error calling Ollama streaming chat completion: {str(e)}")
+            raise ProviderExecutionError(f"Ollama streaming chat completion failed: {str(e)}") from e
