@@ -1,0 +1,11 @@
+-r requirements.txt
+
+# Test-only dependencies. pytest itself was already present in the dev venv
+# but never declared anywhere; pytest-asyncio was MISSING entirely, which
+# silently broke every async test (@pytest.mark.asyncio) in the suite --
+# they errored with "async def functions are not natively supported"
+# instead of running, and the resulting failures had nothing to do with the
+# code under test. Declared explicitly here so a fresh dev environment
+# doesn't reproduce that gap.
+pytest>=8.4
+pytest-asyncio>=1.4.0

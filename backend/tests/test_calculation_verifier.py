@@ -1,7 +1,7 @@
 import math
 import json
 import pytest
-from app.gateway.base import ModelGateway
+from app.gateway.base import ModelGateway, StreamChunk
 from app.tools.calculation_verifier import (
     evaluate_expression,
     verify_calculation,
@@ -22,6 +22,14 @@ class MockCalculationGateway(ModelGateway):
 
     async def analyze(self, request):
         pass
+
+    async def chat_completion(self, messages, options=None) -> str:
+        return json.dumps(self.mock_json_response)
+
+    async def stream_chat_completion(self, messages, options=None):
+        text = json.dumps(self.mock_json_response)
+        yield StreamChunk(content=text, done=False)
+        yield StreamChunk(content="", done=True, metadata={})
 
 
 def test_basic_arithmetic():
