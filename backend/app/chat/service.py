@@ -20,13 +20,14 @@ from app.chat.prompts import (
     build_arithmetic_context_block,
     build_multimodal_context_block,
 )
-from app.rag.embeddings import BGEM3EmbeddingProvider
+from app.rag.embeddings import get_embedding_provider
 from app.rag.retriever import KnowledgeBaseRetriever
 from app.rag.exceptions import SearchQueryError, EmbeddingModelUnavailableError, DatabaseConnectionError
 from app.services.metadata_store import DocumentMetadataStore
 from app.services.storage import LocalDocumentStorage
 from app.services import get_extractor, ExtractionError
 from app.services.model_resource_manager import get_resource_manager
+from app.services import readiness
 from app.schemas.documents import ExtractedDocument
 from app.agents.agents import extract_temperature_metrics, extract_vibration_metrics
 from app.services.tools import LocalToolRegistry
@@ -220,7 +221,7 @@ def _retrieve_for_document_rag(db: Session, user_message: str, attached_document
         # passthrough, this will stop Qwen (if resident, not busy, and
         # actually needed) to make room for BGE -- see ModelResourceManager.
         get_resource_manager().ensure_embedding_capacity(timeout=settings.BGE_WORKER_STARTUP_TIMEOUT_SECONDS)
-        embedder = BGEM3EmbeddingProvider()
+        embedder = get_embedding_provider()
         retriever = KnowledgeBaseRetriever(db, embedder)
         retrieved_chunks, _below_threshold = retriever.retrieve(user_message, top_k=5)
         if attached_document_id:
@@ -297,6 +298,18 @@ def _prepare_turn(
     """
     timings: Dict[str, float] = {}
     convo = get_or_create_conversation(db, conversation_id)
+
+    # 0. Liveness vs readiness (Phase 16 of the E5 migration): if a request
+    # lands while background model warmup is still in flight (see
+    # main.py's startup_event / app/services/readiness.py), give it a
+    # short bounded chance to finish rather than proceeding straight into
+    # an unbounded cold Ollama call with no visibility. A no-op once warm
+    # (the common case) or if warmup already failed (nothing to wait for --
+    # the existing OllamaUnavailableError handling downstream is the real
+    # fallback).
+    rs = readiness.get_state()
+    if rs.warmup_started_at is not None and not rs.llm_ready and rs.llm_error is None:
+        readiness.wait_until_ready("llm", timeout=settings.MODEL_WARMUP_WAIT_SECONDS)
 
     # 1. History preparation (loaded before routing so the router can see
     # whether the immediately preceding turn was document-grounded -- see

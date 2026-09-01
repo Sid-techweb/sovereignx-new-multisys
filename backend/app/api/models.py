@@ -42,11 +42,18 @@ async def get_models():
     embedding_worker_pid = None
     try:
         from app.rag.embedding_worker_manager import get_worker_manager
-        worker_info = get_worker_manager(settings.EMBEDDING_MODEL).get_status()
+        active_model = settings.E5_EMBEDDING_MODEL if settings.EMBEDDING_PROVIDER == "e5" else settings.EMBEDDING_MODEL
+        worker_info = get_worker_manager(settings.EMBEDDING_PROVIDER, active_model).get_status()
         embedding_worker_status = worker_info["status"]
         embedding_worker_pid = worker_info["worker_pid"]
     except Exception:
         embedding_worker_status = "UNKNOWN"
+
+    # Readiness (Phase 16 of the E5 migration): background-warmup progress,
+    # separate from the liveness-only /health endpoint -- see
+    # app/services/readiness.py and main.py's startup_event.
+    from app.services import readiness
+    rs = readiness.get_state()
 
     return ModelInfoResponse(
         provider=provider,
@@ -54,6 +61,9 @@ async def get_models():
         status=status,
         embedding_worker_status=embedding_worker_status,
         embedding_worker_pid=embedding_worker_pid,
+        embedding_provider=settings.EMBEDDING_PROVIDER,
+        llm_ready=rs.llm_ready,
+        embedding_ready=rs.embedding_ready,
     )
 
 @router.post("/models/chat", response_model=ChatResponse)
@@ -91,7 +101,7 @@ async def grounded_query(
     to generate an answer with citations.
     """
     import time
-    from app.rag.embeddings import BGEM3EmbeddingProvider
+    from app.rag.embeddings import get_embedding_provider
     from app.rag.retriever import KnowledgeBaseRetriever
     from app.rag.exceptions import SearchQueryError, EmbeddingModelUnavailableError, DatabaseConnectionError
 
@@ -100,7 +110,7 @@ async def grounded_query(
 
     # 1. Retrieve relevant evidence chunks from the RAG pipeline
     try:
-        embedder = BGEM3EmbeddingProvider()
+        embedder = get_embedding_provider()
         retriever = KnowledgeBaseRetriever(db, embedder)
         results, below_threshold = retriever.retrieve(query, top_k=5)
     except (SearchQueryError, EmbeddingModelUnavailableError, DatabaseConnectionError) as e:

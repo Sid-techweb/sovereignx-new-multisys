@@ -47,7 +47,13 @@ try:
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS requires_human_review BOOLEAN NOT NULL DEFAULT FALSE;"))
         conn.execute(text("ALTER TABLE cases ADD COLUMN IF NOT EXISTS escalation_reason TEXT;"))
-        
+        # E5 embedding migration (additive, non-destructive): a second,
+        # separate 384-dim vector column alongside the existing BGE-M3
+        # `embedding` column -- see rag/models.py for why this is a new
+        # column rather than resizing/replacing the existing one.
+        conn.execute(text("ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding_e5 vector(384);"))
+        conn.execute(text("ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding_e5_model VARCHAR(128);"))
+
     logger.info("PostgreSQL database tables initialized/verified successfully.")
 except Exception as e:
     logger.warning(
@@ -181,30 +187,83 @@ app.include_router(cases.router, dependencies=[Depends(verify_api_key)])
 app.include_router(chat.router, dependencies=[Depends(verify_api_key)])
 app.include_router(sovereignty.router)
 
-# Preload/initialize BGE-M3 embedding model exactly once at application startup.
-# BGE-M3 runs in an isolated worker process (see app/rag/embedding_worker_manager.py):
-# a native PyTorch fault there cannot terminate this FastAPI process. This call
-# spawns that worker and waits (bounded) for it to report ready; failure here is
-# intentionally non-fatal to backend startup -- embeddings/DOCUMENT_RAG degrade to
-# a clean error, but GENERAL_CHAT and the rest of the backend remain unaffected.
+# LIVENESS vs READINESS (Phase 14-16 of the E5 embedding migration).
+#
+# The old design loaded BGE-M3 synchronously inside this startup event --
+# measured at ~18.5s cold -- during which FastAPI/Uvicorn serves NOTHING,
+# including /health, because the ASGI app does not begin accepting requests
+# until every @app.on_event("startup") handler returns. That made basic
+# process liveness indistinguishable from AI-model readiness.
+#
+# This version returns almost immediately (so /health responds right away)
+# and instead kicks off background warmup threads for the LLM (Qwen, via
+# Ollama) and the configured embedding provider (BGE-M3 or E5, via
+# get_embedding_provider() -- never hardcoded here). Progress is tracked in
+# app.services.readiness and surfaced via GET /models; chat/service.py gives
+# an in-flight warmup a short bounded wait rather than proceeding blind (see
+# _prepare_turn). Both warmups run IN PARALLEL: they occupy largely
+# independent resources (Qwen lives in Ollama's separate llama-server
+# process/VRAM; the embedding provider lives in this process's own RAM), and
+# this was measured, not assumed -- see the migration report's "Parallel
+# Warmup" section for the actual wall-clock/peak-RAM/peak-commit numbers.
 @app.on_event("startup")
 def startup_event():
-    logger.info("FastAPI startup: spawning isolated BGE-M3 embedding worker...")
-    try:
-        from app.rag.embeddings import BGEM3EmbeddingProvider
-        BGEM3EmbeddingProvider().initialize()
-        logger.info("FastAPI startup: BGE-M3 embedding worker ready.")
-    except Exception as e:
-        logger.error(f"FastAPI startup: BGE-M3 embedding worker not ready: {e}")
+    import threading
+    from app.services import readiness
+
+    readiness.mark_warmup_started()
+    logger.info(
+        "FastAPI startup: liveness ready immediately; starting background "
+        f"model warmup (llm={settings.MODEL_NAME}, embedding_provider={settings.EMBEDDING_PROVIDER})..."
+    )
+
+    def _warm_llm():
+        try:
+            import httpx
+            with httpx.Client(timeout=120.0) as client:
+                client.post(
+                    f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
+                    json={
+                        "model": settings.MODEL_NAME,
+                        "messages": [{"role": "user", "content": "Hi"}],
+                        "stream": False,
+                        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
+                        **({"think": settings.OLLAMA_THINK} if settings.OLLAMA_THINK is not None else {}),
+                    },
+                )
+            readiness.mark_llm_ready()
+            logger.info("Background warmup: LLM ready.")
+        except Exception as e:
+            readiness.mark_llm_ready(error=str(e))
+            logger.error(f"Background warmup: LLM warmup failed (non-fatal): {e}")
+
+    def _warm_embedding():
+        try:
+            from app.rag.embeddings import get_embedding_provider
+            get_embedding_provider().initialize()
+            readiness.mark_embedding_ready()
+            logger.info(f"Background warmup: {settings.EMBEDDING_PROVIDER} embedding provider ready.")
+        except Exception as e:
+            readiness.mark_embedding_ready(error=str(e))
+            logger.error(
+                f"Background warmup: {settings.EMBEDDING_PROVIDER} embedding provider not ready (non-fatal): {e}"
+            )
+
+    threading.Thread(target=_warm_llm, daemon=True, name="warmup-llm").start()
+    threading.Thread(target=_warm_embedding, daemon=True, name="warmup-embedding").start()
 
 
 @app.on_event("shutdown")
 def shutdown_event():
-    logger.info("FastAPI shutdown: stopping BGE-M3 embedding worker...")
-    try:
-        from app.rag.embedding_worker_manager import get_worker_manager
-        from app.config import settings as _settings
-        get_worker_manager(_settings.EMBEDDING_MODEL).shutdown()
-    except Exception as e:
-        logger.warning(f"FastAPI shutdown: error stopping BGE-M3 embedding worker: {e}")
+    logger.info("FastAPI shutdown: stopping any active embedding worker process(es)...")
+    from app.rag.embedding_worker_manager import get_worker_manager
+    # Shut down both provider slots defensively -- shutdown() on a manager
+    # that never spawned a process is a safe no-op, and BGE stays available
+    # as a fallback (Phase 3) so its worker may be live even when E5 is the
+    # active EMBEDDING_PROVIDER.
+    for provider in ("bge", "e5"):
+        try:
+            get_worker_manager(provider, settings.EMBEDDING_MODEL).shutdown()
+        except Exception as e:
+            logger.warning(f"FastAPI shutdown: error stopping {provider} embedding worker: {e}")
 
