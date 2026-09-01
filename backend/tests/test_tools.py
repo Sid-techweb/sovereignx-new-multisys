@@ -29,17 +29,54 @@ class TestLocalTools(unittest.TestCase):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_list_tools(self):
-        """Test listing of all registered tools"""
+        """
+        Verifies the actual tool-registry contract, not a hardcoded total
+        count. An exact count is not a meaningful invariant here -- new
+        deterministic tools are legitimately added over time (this suite
+        itself grew from 3 tools to 5 across two prior sessions: adding
+        verify_engineering_calculation, then evaluate_arithmetic_expression
+        for deterministic-arithmetic routing). A brittle `len(data) == N`
+        assertion breaks on every legitimate addition without catching any
+        real regression. What actually matters, and what this test checks
+        instead:
+          1. every tool SovereignX's chat/agent flows depend on by name is
+             present (a real regression -- one going missing -- IS caught),
+          2. no duplicate registrations,
+          3. every returned tool has a well-formed schema (name, description,
+             a parameters mapping), so a malformed registration is caught.
+        """
         response = self.client.get("/tools")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        
-        # We expect our 3 tools
-        self.assertEqual(len(data), 3)
+
         tool_names = [t["name"] for t in data]
-        self.assertIn("compare_reading_against_sop_limit", tool_names)
-        self.assertIn("compute_variance_across_readings", tool_names)
-        self.assertIn("convert_units", tool_names)
+
+        # 1. Every tool a known caller depends on by name must be present.
+        # (agents.py / _run_deterministic_tools -> compare_reading_against_sop_limit;
+        #  compute_variance_across_readings, convert_units -> general availability;
+        #  verify_engineering_calculation -> /tools free-text formula path;
+        #  evaluate_arithmetic_expression -> chat/service.py's EXISTING_TOOL_FLOW
+        #  arithmetic routing, see app/chat/arithmetic.py.)
+        required_tool_names = {
+            "compare_reading_against_sop_limit",
+            "compute_variance_across_readings",
+            "convert_units",
+            "verify_engineering_calculation",
+            "evaluate_arithmetic_expression",
+        }
+        missing = required_tool_names - set(tool_names)
+        self.assertEqual(missing, set(), f"Required tool(s) missing from registry: {missing}")
+
+        # 2. No duplicate registrations.
+        self.assertEqual(len(tool_names), len(set(tool_names)), "Duplicate tool name(s) registered")
+
+        # 3. Every tool has a well-formed schema.
+        for tool in data:
+            self.assertIn("name", tool)
+            self.assertIn("description", tool)
+            self.assertTrue(tool["description"].strip(), f"{tool['name']} has an empty description")
+            self.assertIn("parameters", tool)
+            self.assertIsInstance(tool["parameters"], dict)
 
     def test_compare_reading_sop_limit_exceeded(self):
         """Test exceedance limit tool with reading > limit"""
