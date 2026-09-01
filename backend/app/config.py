@@ -53,13 +53,20 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 25
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/sovereignx"
 
-    # Embedding provider selection. "bge" is the long-running production
-    # default; "e5" selects the new, measured-equivalent-quality,
-    # dramatically-smaller multilingual-e5-small candidate (see
-    # E5SmallEmbeddingProvider). Only this one switch changes which
+    # Embedding provider selection. Switched to "e5" after the full staged
+    # migration's validation gates all passed: production-path retrieval
+    # (Recall@1/3/5=1.0, MRR=1.0, wrong-asset=0, matching the isolated
+    # benchmark once a test-isolation confound was found and fixed),
+    # multilingual sanity (3/4), worker-vs-in-process A/B (kept isolation --
+    # negligible overhead), live acceptance, and a 40-call stress test (0
+    # crashes, 39/40 successes). "bge" remains fully supported -- see
+    # EMBEDDING_MODEL below and BGEM3EmbeddingProvider -- for instant
+    # rollback (just flip this back; no code change, no data loss, the
+    # embedding_e5 columns are additive and never touched the original
+    # `embedding` column/data). Only this one switch changes which
     # model/index the rest of the app uses -- no embedding model name is
-    # hardcoded elsewhere in RAG/indexing code.
-    EMBEDDING_PROVIDER: str = "bge"  # "bge" | "e5"
+    # hardcoded elsewhere in RAG code.
+    EMBEDDING_PROVIDER: str = "e5"  # "bge" | "e5"
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
     E5_EMBEDDING_MODEL: str = "intfloat/multilingual-e5-small"
     # Whether the E5 provider runs inside the same isolated worker-process
