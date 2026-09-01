@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.rag.models import SQLDocumentChunk
 from app.rag.retriever import KnowledgeBaseRetriever
-from app.rag.embeddings import BGEM3EmbeddingProvider
+from app.rag.embeddings import get_embedding_provider
 from app.gateway import ModelGateway
 from app.services.tools import LocalToolRegistry
 from app.services.grounding import build_grounding_prompt
@@ -127,7 +127,7 @@ class IntakeAgent:
 class RAGAgent:
     def __init__(self, db: Session):
         self.db = db
-        self.embedder = BGEM3EmbeddingProvider()
+        self.embedder = get_embedding_provider()
         self.retriever = KnowledgeBaseRetriever(self.db, self.embedder)
         
     def retrieve_evidence(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:

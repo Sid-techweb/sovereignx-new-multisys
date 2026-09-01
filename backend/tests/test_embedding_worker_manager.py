@@ -16,7 +16,7 @@ TEST_MODEL_NAME = "fake-model-for-tests"
 # without depending on the real model or real memory exhaustion. They are
 # module-level functions (required for multiprocessing 'spawn' picklability).
 
-def fake_worker_ready_then_echo(request_queue, response_queue, model_name):
+def fake_worker_ready_then_echo(request_queue, response_queue, model_name, provider="bge"):
     """Reports ready immediately, then echoes a fixed fake vector per text."""
     import os
     response_queue.put({"type": "ready", "pid": os.getpid()})
@@ -32,12 +32,12 @@ def fake_worker_ready_then_echo(request_queue, response_queue, model_name):
         })
 
 
-def fake_worker_init_failure(request_queue, response_queue, model_name):
+def fake_worker_init_failure(request_queue, response_queue, model_name, provider="bge"):
     import os
     response_queue.put({"type": "init_failed", "pid": os.getpid(), "error": "simulated init failure"})
 
 
-def fake_worker_never_responds_to_job(request_queue, response_queue, model_name):
+def fake_worker_never_responds_to_job(request_queue, response_queue, model_name, provider="bge"):
     """Reports ready, then hangs forever on any embed job -- simulates a stuck (not crashed) worker."""
     import os
     response_queue.put({"type": "ready", "pid": os.getpid()})
@@ -210,25 +210,27 @@ class TestGeneralChatUnaffectedByEmbeddingWorker(unittest.TestCase):
 
 class TestSingleEmbeddingArchitecture(unittest.TestCase):
     """
-    Document ingestion and query embedding must go through the same
-    worker-backed client class -- there must be one embedding execution
-    architecture, not in-process BGE for one path and the worker for the
-    other.
+    Document ingestion and query embedding must go through the SAME
+    provider (whichever EMBEDDING_PROVIDER currently selects -- see
+    app.rag.embeddings.get_embedding_provider) -- there must be one
+    embedding execution architecture, not a different provider for
+    indexing than for retrieval. Checks the current default's actual type
+    rather than hardcoding BGE, since which provider is default is itself
+    a config choice (E5 since the embedding migration; BGE remains fully
+    supported as a fallback -- see TestBGEFallbackStillWorks in
+    test_e5_embedding_migration.py for that path specifically).
     """
 
-    def test_indexer_default_embedder_is_worker_backed_provider(self):
+    def test_indexer_and_retriever_default_to_the_same_provider_type(self):
         from unittest.mock import MagicMock
         from app.rag.indexer import KnowledgeBaseIndexer
-        from app.rag.embeddings import BGEM3EmbeddingProvider
-        indexer = KnowledgeBaseIndexer(MagicMock())
-        self.assertIsInstance(indexer.embedding_provider, BGEM3EmbeddingProvider)
-
-    def test_retriever_default_embedder_is_worker_backed_provider(self):
-        from unittest.mock import MagicMock
         from app.rag.retriever import KnowledgeBaseRetriever
-        from app.rag.embeddings import BGEM3EmbeddingProvider
+        from app.rag.embeddings import get_embedding_provider
+        indexer = KnowledgeBaseIndexer(MagicMock())
         retriever = KnowledgeBaseRetriever(MagicMock())
-        self.assertIsInstance(retriever.embedding_provider, BGEM3EmbeddingProvider)
+        expected_type = type(get_embedding_provider())
+        self.assertIsInstance(indexer.embedding_provider, expected_type)
+        self.assertIsInstance(retriever.embedding_provider, expected_type)
 
 
 class TestHealthAfterWorkerCrash(unittest.TestCase):
@@ -243,12 +245,20 @@ class TestHealthAfterWorkerCrash(unittest.TestCase):
         from app.main import app
         from app.rag import embedding_worker_manager as ewm
 
-        fake_manager = EmbeddingWorkerManager(TEST_MODEL_NAME, worker_target=fake_worker_ready_then_echo)
+        # Registered under whichever provider is CURRENTLY active (not
+        # hardcoded "bge") -- /models looks up settings.EMBEDDING_PROVIDER's
+        # worker manager, and which provider is default is itself a config
+        # choice (E5 since the embedding migration; see get_worker_manager()'s
+        # docstring -- the registry is keyed by provider so BGE stays
+        # available as a fallback alongside E5).
+        fake_manager = EmbeddingWorkerManager(
+            TEST_MODEL_NAME, worker_target=fake_worker_ready_then_echo, provider=settings.EMBEDDING_PROVIDER
+        )
         fake_manager._status = WorkerStatus.CRASHED
         fake_manager._last_error = "simulated crash for health check"
 
-        original_manager = ewm._manager
-        ewm._manager = fake_manager
+        original_managers = ewm._managers
+        ewm._managers = {**original_managers, settings.EMBEDDING_PROVIDER: fake_manager}
         try:
             client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
             res = client.get("/health")
@@ -259,7 +269,7 @@ class TestHealthAfterWorkerCrash(unittest.TestCase):
             self.assertEqual(res2.status_code, 200)
             self.assertEqual(res2.json()["embedding_worker_status"], "CRASHED")
         finally:
-            ewm._manager = original_manager
+            ewm._managers = original_managers
 
 
 if __name__ == "__main__":

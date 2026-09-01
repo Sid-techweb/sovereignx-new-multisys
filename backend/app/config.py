@@ -52,7 +52,27 @@ class Settings(BaseSettings):
     DOCUMENT_STORAGE_PATH: str = "storage/documents"
     MAX_UPLOAD_SIZE_MB: int = 25
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/sovereignx"
+
+    # Embedding provider selection. "bge" is the long-running production
+    # default; "e5" selects the new, measured-equivalent-quality,
+    # dramatically-smaller multilingual-e5-small candidate (see
+    # E5SmallEmbeddingProvider). Only this one switch changes which
+    # model/index the rest of the app uses -- no embedding model name is
+    # hardcoded elsewhere in RAG/indexing code.
+    EMBEDDING_PROVIDER: str = "bge"  # "bge" | "e5"
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    E5_EMBEDDING_MODEL: str = "intfloat/multilingual-e5-small"
+    # Whether the E5 provider runs inside the same isolated worker-process
+    # architecture BGE-M3 uses, or loads directly in-process. Measured
+    # (Gate 13 of the migration, real production classes, 20 queries):
+    # worker overhead vs in-process is negligible -- query median 30.86ms
+    # in-process vs 31.71ms worker (~1ms), startup 18.1s vs 19.4s (~1.3s),
+    # init commit cost 2108MB vs 2152MB (~44MB). Since in-process does NOT
+    # give a *meaningful* latency/resource advantage, isolation is kept by
+    # default: fault containment (a native crash takes down only the worker
+    # process, never FastAPI) is worth keeping at this cost. Kept
+    # configurable in case hardware/measurements differ elsewhere.
+    E5_USE_ISOLATED_WORKER: bool = True
     API_KEY: str = "sovereignx-demo-key-2026"
     RAG_CHUNK_SIZE: int = 800
     RAG_CHUNK_OVERLAP: int = 120
@@ -80,6 +100,16 @@ class Settings(BaseSettings):
     BGE_WORKER_MAX_RESTART_ATTEMPTS: int = 3
     BGE_WORKER_RESTART_COOLDOWN_SECONDS: float = 10.0
 
+    # multilingual-e5-small commit-headroom safety margin, used only when
+    # E5_USE_ISOLATED_WORKER=True (the worker path reuses the same generic
+    # preflight/guard machinery BGE-M3 uses). Deliberately much smaller than
+    # BGE_MIN_COMMIT_HEADROOM_MB: E5-small's own measured resident footprint
+    # (~118M params, 384-dim) is roughly an order of magnitude below BGE-M3's
+    # ~1.9GB, so reusing BGE's 2048MB margin here would be needlessly
+    # conservative. Not used at all in the (default) in-process E5 path --
+    # see E5_USE_ISOLATED_WORKER and model_resource_manager.py.
+    E5_MIN_COMMIT_HEADROOM_MB: int = 512
+
     # Local model resource orchestration (ModelResourceManager). A follow-up
     # investigation proved qwen2.5:7b's *load* (not BGE-M3 itself) fails
     # with a CUDA allocation error under Windows commit-charge pressure
@@ -93,12 +123,27 @@ class Settings(BaseSettings):
     # call attempt anyway (its own existing error handling is the fallback).
     RESOURCE_RELEASE_TIMEOUT_SECONDS: float = 15.0
 
+    # Bounded wait a chat turn gives background model warmup (see
+    # app/services/readiness.py and main.py's startup_event) to finish
+    # before proceeding anyway. Liveness (/health) never waits on this --
+    # only an actual chat turn that arrives while warmup is still in flight
+    # does, and only up to this many seconds.
+    MODEL_WARMUP_WAIT_SECONDS: float = 5.0
+
     @field_validator("MODEL_PROVIDER")
     @classmethod
     def validate_provider(cls, v: str) -> str:
         provider = v.lower()
         if provider not in ["mock", "ollama"]:
             raise ValueError("MODEL_PROVIDER must be either 'mock' or 'ollama'")
+        return provider
+
+    @field_validator("EMBEDDING_PROVIDER")
+    @classmethod
+    def validate_embedding_provider(cls, v: str) -> str:
+        provider = v.lower()
+        if provider not in ["bge", "e5"]:
+            raise ValueError("EMBEDDING_PROVIDER must be either 'bge' or 'e5'")
         return provider
 
     model_config = SettingsConfigDict(

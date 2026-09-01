@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 from app.database import get_db
 from app.config import settings
 from app.rag.models import SQLDocumentChunk
-from app.rag.embeddings import BGEM3EmbeddingProvider
+from app.rag.embeddings import get_embedding_provider
 from app.rag.indexer import KnowledgeBaseIndexer
 from app.rag.retriever import KnowledgeBaseRetriever
 from app.rag.exceptions import IndexingError, SearchQueryError, EmbeddingModelUnavailableError, DatabaseConnectionError
@@ -71,7 +71,7 @@ def index_document(document_id: str, db: Session = Depends(get_db)):
         # KnowledgeBaseIndexer), so this ensures the worker is up once per
         # document, not per chunk. Lock-coordinated against Qwen-preemption.
         get_resource_manager().ensure_embedding_available(timeout=settings.BGE_WORKER_STARTUP_TIMEOUT_SECONDS)
-        embedder = BGEM3EmbeddingProvider()
+        embedder = get_embedding_provider()
         indexer = KnowledgeBaseIndexer(db, embedder)
         chunks_count = indexer.index_document(extracted_doc)
         
@@ -95,10 +95,11 @@ def get_status(db: Session = Depends(get_db)):
         doc_count = db.query(SQLDocumentChunk.document_id).distinct().count()
         chunk_count = db.query(SQLDocumentChunk).count()
         
+        active_model = settings.E5_EMBEDDING_MODEL if settings.EMBEDDING_PROVIDER == "e5" else settings.EMBEDDING_MODEL
         return StatusResponse(
             documents_indexed=doc_count,
             chunks_indexed=chunk_count,
-            embedding_model=settings.EMBEDDING_MODEL or "BAAI/bge-m3",
+            embedding_model=active_model or "BAAI/bge-m3",
             vector_store="postgresql+pgvector",
             index_status="ready"
         )
@@ -109,7 +110,7 @@ def get_status(db: Session = Depends(get_db)):
 def search_knowledge_base(req: SearchRequest, db: Session = Depends(get_db)):
     """Simulates localized pgvector search query returning sorted relevant evidence."""
     try:
-        embedder = BGEM3EmbeddingProvider()
+        embedder = get_embedding_provider()
         retriever = KnowledgeBaseRetriever(db, embedder)
         results, below_threshold = retriever.retrieve(req.query, req.top_k)
         

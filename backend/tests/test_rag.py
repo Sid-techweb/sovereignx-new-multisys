@@ -168,7 +168,13 @@ class TestRAGIndexer(unittest.TestCase):
     def setUp(self):
         self.db = MagicMock()
         self.embedder = MagicMock()
-        self.embedder.get_embeddings.return_value = [[0.1] * 1024]
+        self.embedder.embed_documents.return_value = [[0.1] * 1024]
+        # Real providers set these as class attributes (see embeddings.py);
+        # a bare MagicMock needs them set explicitly so
+        # setattr(chunk, self.embedding_provider.vector_column, ...) in
+        # indexer.py gets a real string, not a fresh MagicMock.
+        self.embedder.vector_column = "embedding"
+        self.embedder.model_name = "BAAI/bge-m3"
 
     def test_index_document_succeeds(self):
         doc = ExtractedDocument(
@@ -244,7 +250,11 @@ class TestRAGRetriever(unittest.TestCase):
     def setUp(self):
         self.db = MagicMock()
         self.embedder = MagicMock()
-        self.embedder.get_embedding.return_value = [0.1] * 1024
+        self.embedder.embed_query.return_value = [0.1] * 1024
+        # See TestRAGIndexer.setUp -- a bare MagicMock needs vector_column
+        # set explicitly so getattr(SQLDocumentChunk, ...) gets a real
+        # string, not a fresh MagicMock.
+        self.embedder.vector_column = "embedding"
 
     def test_retrieve_query_returns_top_k(self):
         # Mock query return values
@@ -260,7 +270,7 @@ class TestRAGRetriever(unittest.TestCase):
         )
         
         # pgvector query mock returns list of (chunk, score)
-        self.db.query().order_by().limit().all.return_value = [(chunk, 0.85)]
+        self.db.query().filter().order_by().limit().all.return_value = [(chunk, 0.85)]
 
         retriever = KnowledgeBaseRetriever(self.db, self.embedder)
         results, below_threshold = retriever.retrieve("pump vibration", top_k=3)
@@ -284,7 +294,7 @@ class TestRAGRetriever(unittest.TestCase):
         )
         
         # pgvector query mock returns list of (chunk, score) below threshold
-        self.db.query().order_by().limit().all.return_value = [(chunk, 0.45)]
+        self.db.query().filter().order_by().limit().all.return_value = [(chunk, 0.45)]
 
         retriever = KnowledgeBaseRetriever(self.db, self.embedder)
         results, below_threshold = retriever.retrieve("pump vibration", top_k=3)
@@ -315,7 +325,7 @@ class TestRAGRetriever(unittest.TestCase):
         )
         
         # pgvector query mock returns list of (chunk, score)
-        self.db.query().order_by().limit().all.return_value = [
+        self.db.query().filter().order_by().limit().all.return_value = [
             (chunk_above, 0.85),
             (chunk_below, 0.45)
         ]
@@ -339,7 +349,18 @@ class TestRAGRetriever(unittest.TestCase):
 
 
 class TestRAGAPIAndCORS(unittest.TestCase):
+    """
+    Explicitly forces EMBEDDING_PROVIDER="bge" (rather than relying on it
+    being the ambient default -- it no longer is, since the E5 migration
+    switched the default) because every test in this class patches/asserts
+    BGEM3EmbeddingProvider specifically -- this is the BGE-fallback-path
+    coverage, deliberately pinned to BGE regardless of which provider is
+    the current default (see TestBGEFallbackStillWorks in
+    test_e5_embedding_migration.py for the equivalent config-only check).
+    """
     def setUp(self):
+        self._original_provider = settings.EMBEDDING_PROVIDER
+        settings.EMBEDDING_PROVIDER = "bge"
         self.client = TestClient(app, headers={"X-API-Key": settings.API_KEY})
         self.mock_db = MagicMock()
         # Register dependency override for database session
@@ -357,6 +378,7 @@ class TestRAGAPIAndCORS(unittest.TestCase):
         self._resource_manager_patcher.start()
 
     def tearDown(self):
+        settings.EMBEDDING_PROVIDER = self._original_provider
         self._resource_manager_patcher.stop()
         from app.database import get_db
         if get_db in app.dependency_overrides:

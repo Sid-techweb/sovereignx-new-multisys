@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy.orm import Session
 from app.rag.models import SQLDocumentChunk
-from app.rag.embeddings import BGEM3EmbeddingProvider
+from app.rag.embeddings import EmbeddingProvider, get_embedding_provider
 from app.rag.chunker import chunk_document
 from app.rag.exceptions import IndexingError, DatabaseConnectionError
 from app.schemas.documents import ExtractedDocument
@@ -9,10 +9,15 @@ from app.schemas.documents import ExtractedDocument
 logger = logging.getLogger("sovereignx")
 
 class KnowledgeBaseIndexer:
-    """Ingests ExtractedDocuments, processes chunking, generates embeddings, and saves to PostgreSQL."""
-    def __init__(self, db: Session, embedding_provider: BGEM3EmbeddingProvider = None):
+    """
+    Ingests ExtractedDocuments, processes chunking, generates embeddings, and
+    saves to PostgreSQL. Provider-agnostic: writes to whichever vector
+    column matches the injected (or default, config-selected) embedding
+    provider -- see EmbeddingProvider.vector_column in embeddings.py.
+    """
+    def __init__(self, db: Session, embedding_provider: EmbeddingProvider = None):
         self.db = db
-        self.embedding_provider = embedding_provider or BGEM3EmbeddingProvider()
+        self.embedding_provider = embedding_provider or get_embedding_provider()
 
     def index_document(self, doc: ExtractedDocument) -> int:
         """
@@ -64,15 +69,21 @@ class KnowledgeBaseIndexer:
         if not chunks_dto:
             raise IndexingError("No text chunks generated for document.")
 
-        # 4. Generate BGE-M3 embeddings locally
+        # 4. Generate embeddings locally via embed_documents() so any
+        # provider-specific asymmetric formatting (e.g. E5's "passage: "
+        # prefix) is applied without this class knowing about it.
         texts = [chunk.content for chunk in chunks_dto]
         try:
-            embeddings = self.embedding_provider.get_embeddings(texts)
+            embeddings = self.embedding_provider.embed_documents(texts)
         except Exception as e:
             logger.error(f"Failed to generate embeddings during indexing: {str(e)}")
             raise IndexingError(f"Embedding model error: {str(e)}") from e
 
-        # 5. Store chunks + embeddings in PostgreSQL + pgvector
+        # 5. Store chunks + embeddings in PostgreSQL + pgvector, into
+        # whichever column this provider's vectors live in. `embedding_e5_model`
+        # records the exact model that produced embedding_e5 (Phase 7's
+        # version metadata) -- left NULL for the BGE column, which has no
+        # such per-row tracking need (it has always been exactly BGE-M3).
         try:
             for idx, chunk_dto in enumerate(chunks_dto):
                 sql_chunk = SQLDocumentChunk(
@@ -85,8 +96,10 @@ class KnowledgeBaseIndexer:
                     page_number=chunk_dto.page_number,
                     document_checksum=checksum,
                     chunk_metadata=chunk_dto.chunk_metadata,
-                    embedding=embeddings[idx]  # Vector of floats
                 )
+                setattr(sql_chunk, self.embedding_provider.vector_column, embeddings[idx])
+                if self.embedding_provider.vector_column == "embedding_e5":
+                    sql_chunk.embedding_e5_model = self.embedding_provider.model_name
                 self.db.add(sql_chunk)
             
             self.db.commit()

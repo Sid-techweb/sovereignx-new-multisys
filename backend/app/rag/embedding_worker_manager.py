@@ -26,7 +26,7 @@ import threading
 import time
 import uuid
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from app.config import settings
 from app.rag.exceptions import EmbeddingModelUnavailableError
@@ -45,11 +45,15 @@ class WorkerStatus(str, Enum):
 
 
 class EmbeddingWorkerManager:
-    def __init__(self, model_name: str, worker_target=None):
+    def __init__(self, model_name: str, worker_target=None, provider: str = "bge"):
         self.model_name = model_name
+        # "bge" | "e5" -- selects which model runner run_worker() constructs
+        # inside the child process, and which commit-headroom threshold this
+        # manager's own preflight checks use (see _threshold_mb below).
+        self.provider = provider
         # Test-only injection point: lets tests substitute a lightweight
         # fake worker function (e.g. one that can be told to os._exit()
-        # on command) instead of spawning the real BGE-M3 loader, so crash
+        # on command) instead of spawning the real model loader, so crash
         # detection/restart logic can be tested fast and deterministically
         # without depending on the real model or real memory exhaustion.
         # Production code always uses the default (the real run_worker).
@@ -69,6 +73,9 @@ class EmbeddingWorkerManager:
         # ModelResourceManager's module docstring for the accepted narrow
         # race and why it self-heals rather than needing a stricter lock.
         self._active_jobs = 0
+
+    def _threshold_mb(self) -> float:
+        return settings.BGE_MIN_COMMIT_HEADROOM_MB if self.provider == "bge" else settings.E5_MIN_COMMIT_HEADROOM_MB
 
     # -- status/introspection ------------------------------------------
 
@@ -95,7 +102,7 @@ class EmbeddingWorkerManager:
             self._spawn_if_safe(timeout)
 
     def _spawn_if_safe(self, timeout: float) -> None:
-        mem = get_memory_status()
+        mem = get_memory_status(self._threshold_mb())
         if not mem.safe_for_embedding:
             self._status = WorkerStatus.UNAVAILABLE_RESOURCES
             self._last_error = (
@@ -103,7 +110,7 @@ class EmbeddingWorkerManager:
                 f"{mem.threshold_mb:.0f}MB required"
             )
             logger.warning(
-                "BGE worker spawn skipped -- unsafe resource condition "
+                f"{self.provider} worker spawn skipped -- unsafe resource condition "
                 f"(commit_headroom_mb={mem.commit_headroom_mb:.0f} threshold_mb={mem.threshold_mb:.0f} "
                 f"available_ram_mb={mem.available_physical_mb:.0f} source={mem.source})"
             )
@@ -123,13 +130,13 @@ class EmbeddingWorkerManager:
             target = run_worker
         self._process = self._ctx.Process(
             target=target,
-            args=(self._request_queue, self._response_queue, self.model_name),
+            args=(self._request_queue, self._response_queue, self.model_name, self.provider),
             daemon=True,
         )
         manager_pid = os.getpid()
         self._process.start()
         logger.info(
-            f"BGE embedding worker spawn requested. FASTAPI_PID={manager_pid} "
+            f"{self.provider} embedding worker spawn requested. FASTAPI_PID={manager_pid} "
             f"EMBEDDING_WORKER_PID={self._process.pid}"
         )
 
@@ -139,7 +146,7 @@ class EmbeddingWorkerManager:
             self._status = WorkerStatus.CRASHED
             self._last_error = "worker did not report ready within startup timeout"
             logger.error(
-                f"BGE embedding worker (PID={self._process.pid}) failed to become ready "
+                f"{self.provider} embedding worker (PID={self._process.pid}) failed to become ready "
                 f"within {timeout}s; terminating."
             )
             self._terminate_process()
@@ -152,12 +159,12 @@ class EmbeddingWorkerManager:
             self._status = WorkerStatus.READY
             self._last_error = None
             logger.info(
-                f"BGE embedding worker READY. FASTAPI_PID={manager_pid} EMBEDDING_WORKER_PID={self._worker_pid}"
+                f"{self.provider} embedding worker READY. FASTAPI_PID={manager_pid} EMBEDDING_WORKER_PID={self._worker_pid}"
             )
         else:
             self._status = WorkerStatus.CRASHED
             self._last_error = msg.get("error", "unknown init failure")
-            logger.error(f"BGE embedding worker failed to initialize: {self._last_error}")
+            logger.error(f"{self.provider} embedding worker failed to initialize: {self._last_error}")
             self._terminate_process()
             raise EmbeddingModelUnavailableError(
                 f"Local embedding model failed to initialize: {self._last_error}"
@@ -192,11 +199,11 @@ class EmbeddingWorkerManager:
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         with self._lock:
-            mem = get_memory_status()
+            mem = get_memory_status(self._threshold_mb())
             if not mem.safe_for_embedding:
                 self._status = WorkerStatus.UNAVAILABLE_RESOURCES
                 logger.warning(
-                    "BGE embed() refused -- unsafe resource condition "
+                    f"{self.provider} embed() refused -- unsafe resource condition "
                     f"(commit_headroom_mb={mem.commit_headroom_mb:.0f} threshold_mb={mem.threshold_mb:.0f} "
                     f"available_ram_mb={mem.available_physical_mb:.0f})"
                 )
@@ -241,7 +248,7 @@ class EmbeddingWorkerManager:
     def _handle_crash(self, reason: str) -> None:
         exitcode = self._process.exitcode if self._process is not None else None
         logger.error(
-            f"BGE embedding worker crash detected: {reason} (PID={self._worker_pid}, exitcode={exitcode})"
+            f"{self.provider} embedding worker crash detected: {reason} (PID={self._worker_pid}, exitcode={exitcode})"
         )
         self._status = WorkerStatus.CRASHED
         self._last_error = reason
@@ -257,7 +264,7 @@ class EmbeddingWorkerManager:
         if len(self._restart_timestamps) >= settings.BGE_WORKER_MAX_RESTART_ATTEMPTS:
             self._status = WorkerStatus.CRASHED
             logger.error(
-                f"BGE embedding worker restart limit reached "
+                f"{self.provider} embedding worker restart limit reached "
                 f"({settings.BGE_WORKER_MAX_RESTART_ATTEMPTS} attempts within {window:.0f}s) -- not restarting."
             )
             raise EmbeddingModelUnavailableError(
@@ -269,34 +276,40 @@ class EmbeddingWorkerManager:
             elapsed = now - self._restart_timestamps[-1]
             if elapsed < settings.BGE_WORKER_RESTART_COOLDOWN_SECONDS:
                 sleep_for = settings.BGE_WORKER_RESTART_COOLDOWN_SECONDS - elapsed
-                logger.info(f"BGE embedding worker restart cooldown: waiting {sleep_for:.1f}s")
+                logger.info(f"{self.provider} embedding worker restart cooldown: waiting {sleep_for:.1f}s")
                 time.sleep(sleep_for)
 
         self._status = WorkerStatus.RESTARTING
         self._restart_timestamps.append(time.time())
         logger.info(
-            f"Restarting BGE embedding worker (attempt {len(self._restart_timestamps)}"
+            f"Restarting {self.provider} embedding worker (attempt {len(self._restart_timestamps)}"
             f"/{settings.BGE_WORKER_MAX_RESTART_ATTEMPTS})"
         )
         self._spawn_if_safe(timeout=settings.BGE_WORKER_STARTUP_TIMEOUT_SECONDS)
 
 
 _manager_lock = threading.Lock()
-_manager: Optional[EmbeddingWorkerManager] = None
+_managers: Dict[str, "EmbeddingWorkerManager"] = {}
 
 
-def get_worker_manager(model_name: str) -> EmbeddingWorkerManager:
-    """Process-wide singleton accessor for the embedding worker manager."""
-    global _manager
+def get_worker_manager(provider: str, model_name: str) -> EmbeddingWorkerManager:
+    """
+    Process-wide singleton accessor for the embedding worker manager, keyed
+    by provider ("bge" | "e5") so both can have their own independent
+    worker/registry entry -- needed for Phase 3's "switch without code
+    changes" requirement (BGE remains available as a fallback even while E5
+    is active) and for A/B measuring both providers side by side.
+    """
+    global _managers
     with _manager_lock:
-        if _manager is None:
-            _manager = EmbeddingWorkerManager(model_name)
-        return _manager
+        if provider not in _managers:
+            _managers[provider] = EmbeddingWorkerManager(model_name, provider=provider)
+        return _managers[provider]
 
 
 def reset_worker_manager_for_testing():
     """Test-only. Does not terminate a live process -- call shutdown() on
-    the existing manager first if one may be running."""
-    global _manager
+    the existing manager(s) first if one may be running."""
+    global _managers
     with _manager_lock:
-        _manager = None
+        _managers = {}

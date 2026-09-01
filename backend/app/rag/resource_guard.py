@@ -72,20 +72,26 @@ def _query_windows_memory() -> Optional[_MEMORYSTATUSEX]:
     return stat
 
 
-def get_memory_status() -> MemoryStatus:
+def get_memory_status(threshold_mb: Optional[float] = None) -> MemoryStatus:
     """
     Returns the current memory-pressure snapshot used to decide whether it
-    is safe to invoke BGE-M3 right now.
+    is safe to invoke a native embedding model right now.
+
+    `threshold_mb` defaults to BGE_MIN_COMMIT_HEADROOM_MB (the historically
+    validated BGE-M3 margin) when omitted, so every existing BGE call site
+    is unaffected. Pass a different threshold for a provider with a
+    different measured footprint (e.g. E5_MIN_COMMIT_HEADROOM_MB when
+    E5_USE_ISOLATED_WORKER=True) -- see model_resource_manager.py.
 
     IMPORTANT: this is a PREVENTION mechanism, not a guarantee. Resource
     availability can change between this check and the actual embedding
     call (another process can allocate memory in between), and a native
     fault cannot be caught or predicted with certainty from Python. The
-    actual crash-containment guarantee comes from running BGE-M3 in an
+    actual crash-containment guarantee comes from running the model in an
     isolated worker process (see embedding_worker_manager.py), not from
     this preflight check.
     """
-    threshold_mb = settings.BGE_MIN_COMMIT_HEADROOM_MB
+    threshold_mb = threshold_mb if threshold_mb is not None else settings.BGE_MIN_COMMIT_HEADROOM_MB
     stat = _query_windows_memory()
 
     if stat is None:

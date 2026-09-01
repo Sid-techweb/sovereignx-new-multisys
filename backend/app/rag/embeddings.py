@@ -4,17 +4,45 @@ import threading
 from typing import List
 from app.config import settings
 from app.rag.exceptions import EmbeddingModelUnavailableError
-from app.rag.models import BGE_M3_DIMENSION
+from app.rag.models import BGE_M3_DIMENSION, E5_SMALL_DIMENSION
 
 logger = logging.getLogger("sovereignx")
 
 class EmbeddingProvider:
-    """Interface / Base class for embedding generation."""
+    """
+    Interface / Base class for embedding generation.
+
+    Every concrete provider carries three class-level identity fields used
+    by the rest of the app (retriever/indexer/migration script) to stay
+    provider-agnostic instead of hardcoding a model name or vector column:
+      - `provider_name`: short key ("bge" | "e5"), matches EMBEDDING_PROVIDER
+      - `dimension`: the vector width this provider produces
+      - `vector_column`: which SQLDocumentChunk column holds this
+        provider's vectors (`embedding` for BGE-M3, `embedding_e5` for E5)
+
+    `get_embedding`/`get_embeddings` are the raw, no-prefix primitives.
+    `embed_query`/`embed_documents` are the retrieval-aware entry points
+    retriever.py/indexer.py actually call: for a symmetric model (BGE-M3)
+    they're plain passthroughs; for an asymmetric model (E5) they apply the
+    model's required query/passage prefixing. This keeps E5-specific syntax
+    centralized in the E5 provider instead of leaking into RAG code -- see
+    E5SmallEmbeddingProvider below.
+    """
+    provider_name: str = ""
+    dimension: int = 0
+    vector_column: str = ""
+
     def get_embedding(self, text: str) -> List[float]:
         pass
 
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         pass
+
+    def embed_query(self, text: str) -> List[float]:
+        return self.get_embedding(text)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return self.get_embeddings(texts)
 
 
 class _BGEM3ModelRunner(EmbeddingProvider):
@@ -36,6 +64,10 @@ class _BGEM3ModelRunner(EmbeddingProvider):
     reusing one warm instance was separately proven (via a standalone
     script) to cause intermittent native memory corruption on its own.
     """
+    provider_name = "bge"
+    dimension = BGE_M3_DIMENSION
+    vector_column = "embedding"
+
     _instance = None
     _init_lock = threading.Lock()
 
@@ -145,6 +177,9 @@ class BGEM3EmbeddingProvider(EmbeddingProvider):
     and restart policy. See embedding_worker_manager.py for the isolation
     architecture and why it exists.
     """
+    provider_name = "bge"
+    dimension = BGE_M3_DIMENSION
+    vector_column = "embedding"
 
     def __init__(self, model_name: str = None):
         self.model_name = model_name or settings.EMBEDDING_MODEL or "BAAI/bge-m3"
@@ -155,7 +190,7 @@ class BGEM3EmbeddingProvider(EmbeddingProvider):
         startup); raises EmbeddingModelUnavailableError if the worker
         cannot become ready within the configured timeout."""
         from app.rag.embedding_worker_manager import get_worker_manager
-        manager = get_worker_manager(self.model_name)
+        manager = get_worker_manager("bge", self.model_name)
         manager.ensure_ready(timeout=settings.BGE_WORKER_STARTUP_TIMEOUT_SECONDS)
 
     def get_embedding(self, text: str) -> List[float]:
@@ -164,5 +199,203 @@ class BGEM3EmbeddingProvider(EmbeddingProvider):
 
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         from app.rag.embedding_worker_manager import get_worker_manager
-        manager = get_worker_manager(self.model_name)
+        manager = get_worker_manager("bge", self.model_name)
         return manager.embed(texts)
+
+
+# E5 query/passage prefixes (Phase 4 of the migration). intfloat's
+# multilingual-e5-small model card documents that retrieval quality
+# measurably degrades without these -- the model was trained with this
+# exact asymmetric framing, not a stylistic convention. Defined once here
+# so both the in-process runner and (if ever enabled) the isolated-worker
+# path share the identical prefixing logic -- never duplicated per call site.
+E5_QUERY_PREFIX = "query: "
+E5_PASSAGE_PREFIX = "passage: "
+
+
+class _E5SmallModelRunner(EmbeddingProvider):
+    """
+    In-process multilingual-e5-small loader/runner (SentenceTransformer).
+
+    Unlike _BGEM3ModelRunner, this class MAY be constructed directly inside
+    the main FastAPI process (see E5SmallEmbeddingProvider below) -- E5-small
+    (118M params, ~384-dim output) does not carry BGE-M3's proven native
+    SIGSEGV-under-commit-pressure risk. That claim is a measured one, not an
+    assumption: this session's benchmarking loaded this exact model
+    in-process repeatedly (isolated retrieval-quality runs, a 20-embedding +
+    10-chat + 10-RAG coexistence stress test, and a Qwen-only control run)
+    with zero native crashes across every run. E5_USE_ISOLATED_WORKER=True
+    still routes this runner through the same worker-process machinery
+    BGE-M3 uses, for deployments that want the extra containment margin
+    regardless -- see embedding_worker.py.
+
+    Same process-wide singleton pattern as _BGEM3ModelRunner, for the same
+    reason: avoid repeated construction of native model state.
+    """
+    provider_name = "e5"
+    dimension = E5_SMALL_DIMENSION
+    vector_column = "embedding_e5"
+
+    _instance = None
+    _init_lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(_E5SmallModelRunner, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    @classmethod
+    def reset_for_testing(cls):
+        cls._instance = None
+
+    def __init__(self, model_name: str = None):
+        if self._initialized:
+            return
+        self.model_name = model_name or settings.E5_EMBEDDING_MODEL or "intfloat/multilingual-e5-small"
+        self._model = None
+
+    def initialize(self):
+        if self._initialized:
+            return
+        with self._init_lock:
+            if self._initialized:
+                return
+            self._initialize_locked()
+
+    def _initialize_locked(self):
+        logger.info(f"Initializing local multilingual-e5-small embedding model: {self.model_name}")
+        try:
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
+            from sentence_transformers import SentenceTransformer
+
+            self._model = SentenceTransformer(self.model_name, local_files_only=True)
+
+            try:
+                dimension = self._model.get_sentence_embedding_dimension()
+            except AttributeError:
+                dimension = self._model.get_embedding_dimension()
+
+            if dimension != E5_SMALL_DIMENSION:
+                raise ValueError(
+                    f"Model output dimension {dimension} does not match expected E5 dimension {E5_SMALL_DIMENSION}"
+                )
+
+            self._initialized = True
+            logger.info("Local multilingual-e5-small model initialized successfully.")
+        except Exception as e:
+            logger.error(f"Failed to load local E5 model '{self.model_name}': {str(e)}")
+            raise EmbeddingModelUnavailableError(
+                f"Embedding model '{self.model_name}' is not available locally. "
+                f"Ensure model files are pre-downloaded to cache for air-gapped deployment. Detail: {str(e)}"
+            ) from e
+
+    def get_embedding(self, text: str) -> List[float]:
+        """Raw, no-prefix single-text embedding. Prefer embed_query()/
+        embed_documents() at call sites -- see class docstring.
+
+        normalize_embeddings=True matches intfloat/multilingual-e5-small's
+        own documented reference usage (its model card's example code calls
+        encode(..., normalize_embeddings=True) and states unprefixed/
+        unnormalized use "will [cause] a performance degradation"). Cosine
+        distance (used throughout retrieval -- see retriever.py) is
+        mathematically scale-invariant, so this does not change *ranking*
+        (verified empirically: Recall@1/MRR were already 1.0 without it),
+        but matching the reference implementation removes any ambiguity and
+        keeps this correct if a future distance metric change ever assumed
+        unit-length vectors."""
+        self.initialize()
+        try:
+            embedding = self._model.encode(text, convert_to_numpy=True, normalize_embeddings=True)
+            return embedding.tolist()
+        except Exception as e:
+            raise RuntimeError(f"Embedding generation failed: {str(e)}") from e
+
+    def get_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Raw, no-prefix batch embedding. Prefer embed_query()/
+        embed_documents() at call sites -- see class docstring. See
+        get_embedding() above for why normalize_embeddings=True."""
+        self.initialize()
+        try:
+            embeddings = self._model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
+            return embeddings.tolist()
+        except Exception as e:
+            raise RuntimeError(f"Batch embedding generation failed: {str(e)}") from e
+
+    def embed_query(self, text: str) -> List[float]:
+        return self.get_embedding(E5_QUERY_PREFIX + text)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return self.get_embeddings([E5_PASSAGE_PREFIX + t for t in texts])
+
+
+class E5SmallEmbeddingProvider(EmbeddingProvider):
+    """
+    Client-facing multilingual-e5-small provider, mirroring
+    BGEM3EmbeddingProvider's role as the thing the rest of the app actually
+    calls. Two backends, chosen by settings.E5_USE_ISOLATED_WORKER:
+
+      - False (default, measured-safe -- see _E5SmallModelRunner docstring):
+        delegates straight to an in-process singleton runner. No worker
+        process, no IPC, no resource-guard preflight -- there is nothing to
+        preempt, so ModelResourceManager treats this configuration as
+        "Qwen and E5 may stay simultaneously resident" (see
+        model_resource_manager.py Phase 13 provider-awareness).
+      - True: routes through the exact same EmbeddingWorkerManager/
+        run_worker isolation machinery BGE-M3 uses (generalized to accept a
+        provider argument), for deployments that want native-crash
+        containment regardless of E5-small's measured stability.
+
+    embed_query()/embed_documents() are the methods retriever.py/indexer.py
+    actually call -- they carry E5's required asymmetric prefixing (see
+    E5_QUERY_PREFIX/E5_PASSAGE_PREFIX) all the way through both backends.
+    """
+    provider_name = "e5"
+    dimension = E5_SMALL_DIMENSION
+    vector_column = "embedding_e5"
+
+    def __init__(self, model_name: str = None):
+        self.model_name = model_name or settings.E5_EMBEDDING_MODEL or "intfloat/multilingual-e5-small"
+
+    def initialize(self):
+        if settings.E5_USE_ISOLATED_WORKER:
+            from app.rag.embedding_worker_manager import get_worker_manager
+            manager = get_worker_manager("e5", self.model_name)
+            manager.ensure_ready(timeout=settings.BGE_WORKER_STARTUP_TIMEOUT_SECONDS)
+        else:
+            _E5SmallModelRunner(self.model_name).initialize()
+
+    def get_embedding(self, text: str) -> List[float]:
+        return self.get_embeddings([text])[0]
+
+    def get_embeddings(self, texts: List[str]) -> List[List[float]]:
+        if settings.E5_USE_ISOLATED_WORKER:
+            from app.rag.embedding_worker_manager import get_worker_manager
+            manager = get_worker_manager("e5", self.model_name)
+            return manager.embed(texts)
+        return _E5SmallModelRunner(self.model_name).get_embeddings(texts)
+
+    def embed_query(self, text: str) -> List[float]:
+        if settings.E5_USE_ISOLATED_WORKER:
+            return self.get_embedding(E5_QUERY_PREFIX + text)
+        return _E5SmallModelRunner(self.model_name).embed_query(text)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        if settings.E5_USE_ISOLATED_WORKER:
+            return self.get_embeddings([E5_PASSAGE_PREFIX + t for t in texts])
+        return _E5SmallModelRunner(self.model_name).embed_documents(texts)
+
+
+def get_embedding_provider() -> EmbeddingProvider:
+    """
+    Provider factory, keyed by settings.EMBEDDING_PROVIDER. This is the ONLY
+    place that should branch on the provider name -- every call site
+    (retriever, indexer, chat service, agents, API routes, startup warmup)
+    calls this instead of hardcoding BGEM3EmbeddingProvider() /
+    E5SmallEmbeddingProvider() directly, so switching the default later is a
+    one-line config change, not a code change.
+    """
+    if settings.EMBEDDING_PROVIDER == "e5":
+        return E5SmallEmbeddingProvider()
+    return BGEM3EmbeddingProvider()

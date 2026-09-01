@@ -2,17 +2,23 @@ import logging
 from typing import List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from app.rag.models import SQLDocumentChunk
-from app.rag.embeddings import BGEM3EmbeddingProvider
+from app.rag.embeddings import EmbeddingProvider, get_embedding_provider
 from app.rag.exceptions import SearchQueryError, DatabaseConnectionError, EmbeddingModelUnavailableError
 from app.config import settings
 
 logger = logging.getLogger("sovereignx")
 
 class KnowledgeBaseRetriever:
-    """Performs local vector similarity searches on PostgreSQL + pgvector using BGE-M3."""
-    def __init__(self, db: Session, embedding_provider: BGEM3EmbeddingProvider = None):
+    """
+    Performs local vector similarity searches on PostgreSQL + pgvector.
+    Provider-agnostic: queries whichever vector column matches the injected
+    (or default, config-selected) embedding provider -- see
+    EmbeddingProvider.vector_column in embeddings.py -- so this class needs
+    no BGE/E5-specific branching of its own.
+    """
+    def __init__(self, db: Session, embedding_provider: EmbeddingProvider = None):
         self.db = db
-        self.embedding_provider = embedding_provider or BGEM3EmbeddingProvider()
+        self.embedding_provider = embedding_provider or get_embedding_provider()
 
     def retrieve(self, query: str, top_k: int = 5) -> Tuple[List[Dict[str, Any]], bool]:
         """
@@ -21,28 +27,37 @@ class KnowledgeBaseRetriever:
         """
         if not query or not query.strip():
             raise SearchQueryError("Search query cannot be empty.")
-            
+
         if top_k <= 0 or top_k > 20:
             raise SearchQueryError("top_k parameter must be between 1 and 20.")
 
-        # 1. Generate query embedding locally using BGE-M3
+        # 1. Generate the query embedding locally, via embed_query() so any
+        # provider-specific asymmetric formatting (e.g. E5's "query: "
+        # prefix) is applied without this class knowing about it.
         try:
-            query_embedding = self.embedding_provider.get_embedding(query)
+            query_embedding = self.embedding_provider.embed_query(query)
         except (SearchQueryError, EmbeddingModelUnavailableError):
             raise
         except Exception as e:
             logger.error(f"Failed to generate query embedding: {str(e)}")
             raise SearchQueryError(f"Embedding model failure: {str(e)}") from e
 
-        # 2. Retrieve similar chunks using pgvector cosine distance
+        # 2. Retrieve similar chunks using pgvector cosine distance, against
+        # whichever column this provider's vectors live in.
         try:
-            cosine_dist_expr = SQLDocumentChunk.embedding.cosine_distance(query_embedding)
-            
+            vector_column = getattr(SQLDocumentChunk, self.embedding_provider.vector_column)
+            cosine_dist_expr = vector_column.cosine_distance(query_embedding)
+
             # cosine_distance = 1 - cosine_similarity
             # Therefore similarity_score = 1 - cosine_distance
+            # Excludes rows that don't yet have a vector in this provider's
+            # column -- relevant mid-migration, where BGE-indexed chunks
+            # may not have an embedding_e5 value yet (see migration script).
             results = self.db.query(
                 SQLDocumentChunk,
                 (1.0 - cosine_dist_expr).label("similarity_score")
+            ).filter(
+                vector_column.isnot(None)
             ).order_by(
                 cosine_dist_expr.asc()
             ).limit(top_k).all()

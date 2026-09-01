@@ -138,10 +138,20 @@ class TestEnsureEmbeddingCapacity(unittest.TestCase):
     permanently unable to start once Qwen was resident. Mirrors
     TestEnsureLlmCapacity's structure/mocking approach for the opposite
     direction.
+
+    Explicitly forces EMBEDDING_PROVIDER="bge" (rather than relying on it
+    being the ambient default -- it no longer is, since the E5 migration
+    switched the default) because these tests exercise BGE-specific
+    preemption thresholds/mechanics by design.
     """
 
     def setUp(self):
         self.manager = ModelResourceManager()
+        self._original_provider = settings.EMBEDDING_PROVIDER
+        settings.EMBEDDING_PROVIDER = "bge"
+
+    def tearDown(self):
+        settings.EMBEDDING_PROVIDER = self._original_provider
 
     @patch("app.services.model_resource_manager.get_worker_manager")
     @patch("app.services.model_resource_manager.get_memory_status")

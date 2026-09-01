@@ -114,6 +114,36 @@ class ModelResourceManager:
     def mark_qwen_call_end(self) -> None:
         self._qwen_active_jobs -= 1
 
+    # -- provider-awareness (Phase 13 of the E5 migration) -----------------
+    #
+    # All the BGE<->Qwen preemption logic below exists because BGE-M3 always
+    # runs as a separate OS process (mandatory, for native-crash isolation --
+    # see embedding_worker_manager.py) with its own ~1.9GB resident
+    # footprint competing for the same Windows commit headroom Qwen needs.
+    # multilingual-e5-small does NOT need that isolation (measured stable
+    # in-process across this migration's benchmarking -- see
+    # embeddings.py's _E5SmallModelRunner docstring) and, in its default
+    # configuration, has no separate process at all: there is nothing to
+    # preempt in either direction, so E5 and Qwen simply coexist. These
+    # three helpers are the ONLY place that branches on EMBEDDING_PROVIDER --
+    # chat/service.py and the rest of the app stay provider-agnostic.
+
+    def _embedding_worker_is_active(self) -> bool:
+        """True only if the active embedding provider runs as a separate OS
+        process this manager might need to coordinate residency for."""
+        if settings.EMBEDDING_PROVIDER == "bge":
+            return True
+        return settings.E5_USE_ISOLATED_WORKER
+
+    def _active_model_name(self) -> str:
+        return settings.EMBEDDING_MODEL if settings.EMBEDDING_PROVIDER == "bge" else settings.E5_EMBEDDING_MODEL
+
+    def _active_threshold_mb(self) -> float:
+        return settings.BGE_MIN_COMMIT_HEADROOM_MB if settings.EMBEDDING_PROVIDER == "bge" else settings.E5_MIN_COMMIT_HEADROOM_MB
+
+    def _active_worker_manager(self):
+        return get_worker_manager(settings.EMBEDDING_PROVIDER, self._active_model_name())
+
     # -- Ollama/Qwen residency introspection -----------------------------
 
     def is_qwen_resident(self) -> bool:
@@ -153,11 +183,17 @@ class ModelResourceManager:
 
     def get_state(self) -> Dict:
         mem = get_memory_status()
-        worker_status = get_worker_manager(settings.EMBEDDING_MODEL).get_status()
+        if self._embedding_worker_is_active():
+            embedding_worker_status = self._active_worker_manager().get_status()["status"]
+        else:
+            # In-process E5: no worker process/status to report -- reflect
+            # background-warmup readiness instead (see app/services/readiness.py).
+            from app.services import readiness
+            embedding_worker_status = "READY" if readiness.get_state().embedding_ready else "IN_PROCESS_NOT_READY"
         return {
             "resource_state": self._state.value,
             "qwen_resident": self.is_qwen_resident(),
-            "embedding_worker_status": worker_status["status"],
+            "embedding_worker_status": embedding_worker_status,
             "commit_headroom_mb": round(mem.commit_headroom_mb, 1),
         }
 
@@ -198,7 +234,19 @@ class ModelResourceManager:
                 )
                 return {"resource_wait_ms": 0.0}
 
-            worker_mgr = get_worker_manager(settings.EMBEDDING_MODEL)
+            if not self._embedding_worker_is_active():
+                # Current embedding provider (E5, in-process by default) has
+                # no separate worker process to stop -- nothing to preempt.
+                # Measured safe to let Qwen's own load attempt proceed as-is
+                # (see Phase 10/21 coexistence evidence in the migration report).
+                _log_transition(
+                    action="NONE_EMBEDDING_PROVIDER_IN_PROCESS_NO_WORKER_TO_PREEMPT",
+                    embedding_provider=settings.EMBEDDING_PROVIDER,
+                    commit_headroom_mb=round(mem.commit_headroom_mb, 1),
+                )
+                return {"resource_wait_ms": (time.perf_counter() - t0) * 1000.0}
+
+            worker_mgr = self._active_worker_manager()
             active_jobs = worker_mgr.get_active_job_count()
             worker_status = worker_mgr.get_status()["status"]
 
@@ -268,7 +316,11 @@ class ModelResourceManager:
         preemption before giving up.
         """
         with self._transition_lock:
-            get_worker_manager(settings.EMBEDDING_MODEL).ensure_ready(timeout)
+            if not self._embedding_worker_is_active():
+                from app.rag.embeddings import get_embedding_provider
+                get_embedding_provider().initialize()
+                return
+            self._active_worker_manager().ensure_ready(timeout)
 
     def ensure_embedding_capacity(self, timeout: float) -> None:
         """
@@ -288,7 +340,22 @@ class ModelResourceManager:
         DOCUMENT_RAG is only ever selected for an explicit document request.
         """
         with self._transition_lock:
-            worker_mgr = get_worker_manager(settings.EMBEDDING_MODEL)
+            if not self._embedding_worker_is_active():
+                # In-process E5: nothing to "make ready" via worker
+                # machinery, and no Qwen preemption needed or possible --
+                # measured-safe coexistence (see Phase 10/21 evidence in the
+                # migration report). Just ensure the in-process singleton is
+                # warm; EmbeddingModelUnavailableError still propagates
+                # naturally from initialize() on genuine failure.
+                _log_transition(
+                    action="NONE_EMBEDDING_PROVIDER_IN_PROCESS_ENSURE_WARM",
+                    embedding_provider=settings.EMBEDDING_PROVIDER,
+                )
+                from app.rag.embeddings import get_embedding_provider
+                get_embedding_provider().initialize()
+                return
+
+            worker_mgr = self._active_worker_manager()
 
             if worker_mgr.get_status()["status"] == WorkerStatus.READY.value:
                 # Cheap common-case fast path -- but the cached status can be
@@ -308,10 +375,10 @@ class ModelResourceManager:
                     _log_transition(action="EMBEDDING_STATUS_STALE_RETRYING_FULL_CHECK")
 
             mem = get_memory_status()
-            if mem.commit_headroom_mb >= settings.BGE_MIN_COMMIT_HEADROOM_MB:
-                # Sufficient headroom already -- start BGE normally, no
-                # preemption needed. The common case on hardware with
-                # enough RAM for both models resident at once.
+            if mem.commit_headroom_mb >= self._active_threshold_mb():
+                # Sufficient headroom already -- start the embedding worker
+                # normally, no preemption needed. The common case on
+                # hardware with enough RAM for both models resident at once.
                 _log_transition(
                     action="START_EMBEDDING_NO_PREEMPTION_NEEDED",
                     commit_headroom_mb=round(mem.commit_headroom_mb, 1),
@@ -349,12 +416,12 @@ class ModelResourceManager:
             _log_transition(
                 action="STOP_QWEN_FOR_EMBEDDING",
                 commit_headroom_before_mb=round(headroom_before, 1),
-                threshold_mb=settings.BGE_MIN_COMMIT_HEADROOM_MB,
+                threshold_mb=self._active_threshold_mb(),
             )
             self.unload_qwen()
 
             recovered, headroom_after = self._wait_for_commit_recovery(
-                settings.BGE_MIN_COMMIT_HEADROOM_MB, settings.RESOURCE_RELEASE_TIMEOUT_SECONDS
+                self._active_threshold_mb(), settings.RESOURCE_RELEASE_TIMEOUT_SECONDS
             )
             self._state = ResourceState.NORMAL if recovered else ResourceState.MEMORY_PRESSURE
             _log_transition(
