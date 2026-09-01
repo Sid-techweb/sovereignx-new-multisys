@@ -152,5 +152,91 @@ class TestDocumentScopedPhraseVariations(unittest.TestCase):
         self.assertEqual(route, ChatRoute.GENERAL_CHAT)
 
 
+class TestArithmeticRouting(unittest.TestCase):
+    """
+    classify_route() must route obvious deterministic calculation requests
+    to EXISTING_TOOL_FLOW (see app/chat/arithmetic.py), and must NOT route
+    conceptual/explanatory math questions there -- both directions matter
+    equally (over-routing to the calculator is as wrong as under-routing).
+    """
+
+    def test_multiplication_phrase_routes_to_tool_flow(self):
+        route = classify_route("What is 10384 times 827?")
+        self.assertEqual(route, ChatRoute.EXISTING_TOOL_FLOW)
+
+    def test_calculate_symbolic_routes_to_tool_flow(self):
+        route = classify_route("Calculate 45 * 92")
+        self.assertEqual(route, ChatRoute.EXISTING_TOOL_FLOW)
+
+    def test_percent_of_routes_to_tool_flow(self):
+        route = classify_route("What is 18% of 2400?")
+        self.assertEqual(route, ChatRoute.EXISTING_TOOL_FLOW)
+
+    def test_add_list_routes_to_tool_flow(self):
+        route = classify_route("Add 120, 450 and 991")
+        self.assertEqual(route, ChatRoute.EXISTING_TOOL_FLOW)
+
+    def test_explain_calculus_stays_general_chat(self):
+        route = classify_route("Explain calculus")
+        self.assertEqual(route, ChatRoute.GENERAL_CHAT)
+
+    def test_conceptual_math_question_stays_general_chat(self):
+        route = classify_route("How are multiplication and exponentiation different?")
+        self.assertEqual(route, ChatRoute.GENERAL_CHAT)
+
+    def test_document_scoped_arithmetic_prefers_document_rag(self):
+        # "according to the document" wins over the arithmetic detector --
+        # the user wants a value looked up, not a literal computed answer.
+        route = classify_route("According to the document, what is 45 times the value listed?")
+        self.assertEqual(route, ChatRoute.DOCUMENT_RAG)
+
+    def test_attached_document_overrides_arithmetic_phrasing(self):
+        route = classify_route(
+            "What is 45 times 92?", attached_document_id="doc-1", attached_document_file_type="pdf"
+        )
+        self.assertEqual(route, ChatRoute.DOCUMENT_RAG)
+
+
+class TestStickyDocumentContinuation(unittest.TestCase):
+    """
+    A real conversation about a document doesn't repeat "according to the
+    document" every turn. Verified live in the acceptance test: "According
+    to the uploaded document, what is P-101's max temperature?" -> "What is
+    its vibration limit?" -> "What maintenance does the document
+    recommend?" must all stay DOCUMENT_RAG, and a deliberate general-purpose
+    pivot ("...generally") must break the streak.
+    """
+
+    def test_followup_without_document_phrase_stays_document_rag(self):
+        route = classify_route("What is its vibration limit?", previous_route=ChatRoute.DOCUMENT_RAG)
+        self.assertEqual(route, ChatRoute.DOCUMENT_RAG)
+
+    def test_followup_after_tool_flow_stays_document_rag(self):
+        route = classify_route("What about the vibration reading?", previous_route=ChatRoute.EXISTING_TOOL_FLOW)
+        self.assertEqual(route, ChatRoute.DOCUMENT_RAG)
+
+    def test_no_previous_route_does_not_stick(self):
+        route = classify_route("What is its vibration limit?", previous_route=None)
+        self.assertEqual(route, ChatRoute.GENERAL_CHAT)
+
+    def test_previous_general_chat_does_not_stick(self):
+        route = classify_route("What is its vibration limit?", previous_route=ChatRoute.GENERAL_CHAT)
+        self.assertEqual(route, ChatRoute.GENERAL_CHAT)
+
+    def test_explicit_general_pivot_breaks_the_streak(self):
+        route = classify_route(
+            "Explain why temperature monitoring matters generally.", previous_route=ChatRoute.DOCUMENT_RAG
+        )
+        self.assertEqual(route, ChatRoute.GENERAL_CHAT)
+
+    def test_arithmetic_wins_over_sticky_continuation(self):
+        route = classify_route("What is 45 times 92?", previous_route=ChatRoute.DOCUMENT_RAG)
+        self.assertEqual(route, ChatRoute.EXISTING_TOOL_FLOW)
+
+    def test_explicit_document_phrase_still_works_regardless_of_previous_route(self):
+        route = classify_route("According to the document, what is the limit?", previous_route=ChatRoute.GENERAL_CHAT)
+        self.assertEqual(route, ChatRoute.DOCUMENT_RAG)
+
+
 if __name__ == "__main__":
     unittest.main()

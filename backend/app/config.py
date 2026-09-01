@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 
@@ -34,6 +35,18 @@ class Settings(BaseSettings):
     # A cold qwen2.5:7b load costs ~9.7s (measured); keeping it warm between
     # normal chat requests avoids paying that cost repeatedly.
     OLLAMA_KEEP_ALIVE: str = "30m"
+    # Model-aware generation option, not model-specific code: some models
+    # (e.g. qwen3.5:4b) support an Ollama "think" mode that emits internal
+    # chain-of-thought before the answer. Benchmarking found qwen3.5:4b can
+    # enter a long, non-terminating self-verification loop specifically on
+    # arithmetic even with thinking disabled, and thinking mode makes every
+    # response slower/more verbose across the board -- so it's off by
+    # default for a chat assistant. None (the default) omits the "think"
+    # field from every Ollama request entirely, which is always safe: a
+    # model without thinking support (e.g. qwen2.5:7b) simply ignores an
+    # unrecognized option (verified), so switching MODEL_NAME back to a
+    # non-thinking model does not require also clearing this setting.
+    OLLAMA_THINK: Optional[bool] = False
     ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173","http://localhost:5174",
     "http://127.0.0.1:5174",]
     DOCUMENT_STORAGE_PATH: str = "storage/documents"

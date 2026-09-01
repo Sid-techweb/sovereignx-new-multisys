@@ -129,6 +129,7 @@ async def send_message(
         retrieved_chunks=result["retrieved_chunks"],
         tool_executions=result["tool_executions"],
         rag_degraded_reason=result["rag_degraded_reason"],
+        rag_unavailable_reason=result.get("rag_unavailable_reason"),
         timings_ms=result["timings"],
     )
 
@@ -149,7 +150,7 @@ async def send_message_stream(
 
     Event shapes (see app/chat/service.py:stream_chat_turn for the exact
     source of truth):
-      {"type": "start", "conversation_id", "route", "retrieved_chunks", "tool_executions", "rag_degraded_reason"}
+      {"type": "start", "conversation_id", "route", "retrieved_chunks", "tool_executions", "rag_degraded_reason", "rag_unavailable_reason"}
       {"type": "token", "content": "..."}                          (repeated)
       {"type": "done", "message_id", "answer", "route", "timings_ms", "ollama_metadata", ...}
       {"type": "error", "category", "message", "partial_content"?}

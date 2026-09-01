@@ -245,6 +245,16 @@ class LocalToolRegistry:
             func=verify_engineering_calculation
         )
 
+        # Tool 5: evaluate_arithmetic_expression
+        self.register_tool(
+            name="evaluate_arithmetic_expression",
+            description="Deterministically evaluates a plain arithmetic expression (already normalized to symbols, e.g. '10384 * 827') using the same safe AST evaluator as verify_engineering_calculation -- no LLM-based math involved.",
+            parameters={
+                "expression": ParameterDefinition(type="str", description="Normalized arithmetic expression string, e.g. '10384 * 827' or '(25 * 8) + 17'")
+            },
+            func=evaluate_arithmetic_expression
+        )
+
 
 # Default tool implementation functions
 
@@ -384,6 +394,11 @@ def convert_units(value: float, from_unit: str, to_unit: str) -> Dict[str, Any]:
 def verify_engineering_calculation(text_input: str) -> Dict[str, Any]:
     from app.tools.calculation_verifier import extract_and_verify_calculation
     return extract_and_verify_calculation(text_input)
+
+
+def evaluate_arithmetic_expression(expression: str) -> Dict[str, Any]:
+    from app.tools.calculation_verifier import verify_calculation
+    return verify_calculation(formula=expression, variables={})
 
 
 # Singleton instance

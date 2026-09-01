@@ -11,41 +11,63 @@ host commit-charge pressure from the worker's ~1.9GB resident footprint,
 not a GPU/VRAM problem and not a BGE-M3 stability problem (that was already
 solved separately by process isolation -- see embedding_worker_manager.py).
 
-Design (deliberately asymmetric, matching the evidence):
+Design:
   - BGE-M3 never touches the GPU and already protects its OWN startup via
-    its own commit-headroom preflight (BGE_MIN_COMMIT_HEADROOM_MB). There
-    is no measured scenario where Qwen's residency needs to be preempted to
-    make room for BGE.
-  - Qwen's *load* is the fragile operation. Before every LLM call, this
-    manager checks whether Qwen is already resident (if so, nothing to do
-    -- never preempt something that's already working) and, only if it is
-    NOT resident and commit headroom is currently insufficient, stops the
-    BGE worker and waits (bounded) for headroom to recover before letting
-    the existing Ollama gateway attempt the call.
-  - Preemption is entirely DEMAND-DRIVEN: there is no idle timer that stops
-    BGE after N seconds of inactivity. BGE stays resident for as long as
-    nothing needs the room. This avoids the "start worker -> embed one
-    query -> stop worker -> next request -> start worker again" pattern
-    the ~18-19s BGE cold-start time would make painful, without needing a
-    separate idle-timeout subsystem.
-  - This manager never hard-blocks a request: `ensure_llm_capacity` never
-    raises. It does its best-effort preparation and returns; the actual
-    Ollama call has its own existing, already-tested error handling
-    (OllamaUnavailableError/ProviderExecutionError -> clean 503) as the
-    real safety net if a load still fails despite this preparation.
+    its own commit-headroom preflight (BGE_MIN_COMMIT_HEADROOM_MB).
+  - Before every LLM call, `ensure_llm_capacity` checks whether Qwen is
+    already resident (if so, nothing to do -- never preempt something
+    that's already working) and, only if it is NOT resident and commit
+    headroom is currently insufficient, stops the BGE worker and waits
+    (bounded) for headroom to recover before letting the existing Ollama
+    gateway attempt the call.
+  - The reverse direction, `ensure_embedding_capacity`, is symmetric: before
+    a DOCUMENT_RAG retrieval, if BGE is not already ready and headroom is
+    insufficient *because Qwen is resident*, it stops Qwen (via Ollama's
+    keep_alive=0) and waits for headroom to recover before starting BGE.
+    Both directions were originally measured as asymmetric (an earlier
+    investigation found no scenario requiring Qwen->BGE preemption on this
+    dev machine), but a later live benchmark proved the reverse case DOES
+    happen in practice -- a second consecutive DOCUMENT_RAG turn, after the
+    first turn loaded Qwen, would otherwise find BGE permanently unable to
+    start. Unlike `ensure_llm_capacity` (which never raises -- a GENERAL_CHAT
+    answer is always an acceptable fallback), `ensure_embedding_capacity`
+    DOES raise `EmbeddingModelUnavailableError` if BGE still cannot be made
+    available: DOCUMENT_RAG is only ever selected for an explicit,
+    deliberate document request (see chat/routing.py), so silently
+    answering as GENERAL_CHAT instead would be an ungrounded answer
+    presented as if grounding had succeeded -- see chat/service.py's
+    _retrieve_for_document_rag for how callers must treat this.
+  - Preemption in BOTH directions is entirely DEMAND-DRIVEN: there is no
+    idle timer that stops either model after N seconds of inactivity, and
+    if headroom is already sufficient for both to coexist (larger-RAM
+    production hardware), NO transition happens at all in either direction
+    -- this code does not assume the dev laptop's constraints define
+    production behavior.
+  - This manager never hard-blocks on a resource-orchestration failure: any
+    unexpected internal error in either method is caught, logged, and
+    treated as "proceed without intervention" -- the real safety nets
+    (Ollama gateway's OllamaUnavailableError handling, and the explicit
+    document_grounding_unavailable state for RAG) are downstream of this
+    module, not inside it.
 
 Concurrency: a single lock serializes residency *decisions* (whether to
-spawn/stop something), not the embed()/generate() calls themselves, so
-throughput isn't serialized more than the existing architecture already
-does. A best-effort active-job counter on the embedding worker (see
-EmbeddingWorkerManager.get_active_job_count) prevents preempting BGE while
-an embedding call is actually in flight. There is a narrow, accepted race
-where a new embed() call could start in between that check and the actual
-stop -- the worst outcome is that one embed() call has to pay a restart
-(the existing crash-recovery path already handles "worker not ready,
-restart it" gracefully), not a crash or lost data. A stricter cross-call
-lock was deliberately not built for this: the existing containment
-architecture already makes a spurious restart self-healing.
+spawn/stop something) in both directions, not the embed()/generate() calls
+themselves, so throughput isn't serialized more than the existing
+architecture already does. Two best-effort active-job counters -- one on
+the embedding worker (EmbeddingWorkerManager.get_active_job_count) and one
+here for Qwen (mark_qwen_call_start/_end) -- prevent either direction from
+preempting a model while it is actually mid-call: `ensure_llm_capacity`
+won't stop BGE while an embed() is in flight, and `ensure_embedding_capacity`
+won't stop Qwen while a chat_completion()/stream_chat_completion() is in
+flight for another concurrent request. There is a narrow, accepted race
+where a new call could start in between that check and the actual stop --
+the worst outcome is that call has to pay a restart/retry (the existing
+crash-recovery path already handles "worker not ready, restart it"
+gracefully for BGE; a concurrent generation request that started a moment
+after the check would simply get its own fresh Ollama load), not a crash or
+lost data. A stricter cross-call lock was deliberately not built for this:
+the existing containment architecture already makes a spurious restart
+self-healing.
 """
 import logging
 import threading
@@ -58,6 +80,7 @@ import httpx
 from app.config import settings
 from app.rag.embedding_worker_manager import get_worker_manager, WorkerStatus
 from app.rag.resource_guard import get_memory_status
+from app.rag.exceptions import EmbeddingModelUnavailableError
 
 logger = logging.getLogger("sovereignx")
 
@@ -78,6 +101,18 @@ class ModelResourceManager:
     def __init__(self):
         self._transition_lock = threading.Lock()
         self._state = ResourceState.NORMAL
+        # Best-effort hint (not a strict guarantee), symmetric to
+        # EmbeddingWorkerManager._active_jobs -- lets ensure_embedding_capacity
+        # avoid unloading Qwen while a generation call is actually in flight
+        # for another concurrent request. GIL-atomic int; see module
+        # docstring for the accepted narrow race and why it self-heals.
+        self._qwen_active_jobs = 0
+
+    def mark_qwen_call_start(self) -> None:
+        self._qwen_active_jobs += 1
+
+    def mark_qwen_call_end(self) -> None:
+        self._qwen_active_jobs -= 1
 
     # -- Ollama/Qwen residency introspection -----------------------------
 
@@ -100,12 +135,9 @@ class ModelResourceManager:
     def unload_qwen(self) -> None:
         """
         Immediately unloads the configured LLM via Ollama's supported
-        keep_alive=0 mechanism (no subprocess/CLI invocation). Implemented
-        for completeness and available to future resource policy -- the
-        current automatic flow never calls this, because the measured
-        evidence shows no scenario where Qwen needs to be preempted to make
-        room for BGE (BGE never touches the GPU and already protects its
-        own startup independently).
+        keep_alive=0 mechanism (no subprocess/CLI invocation). Called by
+        ensure_embedding_capacity() when BGE needs the room and Qwen is
+        the thing occupying it -- see that method and the module docstring.
         """
         try:
             with httpx.Client(timeout=5.0) as client:
@@ -227,9 +259,114 @@ class ModelResourceManager:
         BGE-specific commit-headroom preflight -- reused here, not
         duplicated). The transition lock just prevents this from racing
         against ensure_llm_capacity()'s stop-BGE-for-Qwen sequence.
+
+        Used for document INDEXING (api/rag.py), where there is no
+        "explicit user request must not silently degrade" concern -- an
+        indexing failure already has its own clean error handling upstream.
+        Chat's DOCUMENT_RAG retrieval path uses ensure_embedding_capacity()
+        instead, which additionally attempts the reverse Qwen->BGE
+        preemption before giving up.
         """
         with self._transition_lock:
             get_worker_manager(settings.EMBEDDING_MODEL).ensure_ready(timeout)
+
+    def ensure_embedding_capacity(self, timeout: float) -> None:
+        """
+        Best-effort preparation before a DOCUMENT_RAG retrieval: ensures BGE
+        is ready, performing the reverse (Qwen -> BGE) resource transition
+        if -- and only if -- it's actually needed (demand-driven, same
+        policy as ensure_llm_capacity's BGE -> Qwen direction: if BGE is
+        already ready, or headroom is already sufficient for both, no
+        transition happens at all).
+
+        Unlike ensure_llm_capacity, this method DOES let
+        EmbeddingModelUnavailableError propagate if BGE genuinely cannot be
+        made available (even after attempting the reverse transition) --
+        callers (chat/service.py's _retrieve_for_document_rag) must treat
+        that as "document grounding unavailable" and return an explicit
+        failure state, never a silent GENERAL_CHAT-looking answer, since
+        DOCUMENT_RAG is only ever selected for an explicit document request.
+        """
+        with self._transition_lock:
+            worker_mgr = get_worker_manager(settings.EMBEDDING_MODEL)
+
+            if worker_mgr.get_status()["status"] == WorkerStatus.READY.value:
+                # Cheap common-case fast path -- but the cached status can be
+                # stale (the worker may have died since it was last checked,
+                # e.g. reaped under the same memory pressure this whole
+                # module exists to manage). Don't just propagate a failure
+                # here: fall through to the full decision tree below, which
+                # can still attempt the reverse Qwen->BGE preemption before
+                # giving up. This is exactly what closes the gap a live
+                # benchmark found -- a stale-READY status must never skip
+                # the recovery attempt.
+                try:
+                    _log_transition(action="NONE_EMBEDDING_ALREADY_READY")
+                    worker_mgr.ensure_ready(timeout)
+                    return
+                except EmbeddingModelUnavailableError:
+                    _log_transition(action="EMBEDDING_STATUS_STALE_RETRYING_FULL_CHECK")
+
+            mem = get_memory_status()
+            if mem.commit_headroom_mb >= settings.BGE_MIN_COMMIT_HEADROOM_MB:
+                # Sufficient headroom already -- start BGE normally, no
+                # preemption needed. The common case on hardware with
+                # enough RAM for both models resident at once.
+                _log_transition(
+                    action="START_EMBEDDING_NO_PREEMPTION_NEEDED",
+                    commit_headroom_mb=round(mem.commit_headroom_mb, 1),
+                )
+                worker_mgr.ensure_ready(timeout)
+                return
+
+            if not self.is_qwen_resident():
+                # Insufficient headroom, but nothing to preempt -- some
+                # other process is consuming the memory. Let ensure_ready's
+                # own preflight raise its normal, already-tested error.
+                _log_transition(
+                    action="EMBEDDING_UNAVAILABLE_NO_QWEN_TO_PREEMPT",
+                    commit_headroom_mb=round(mem.commit_headroom_mb, 1),
+                )
+                worker_mgr.ensure_ready(timeout)
+                return
+
+            if self._qwen_active_jobs > 0:
+                # A generation call is actively in flight for another
+                # request -- do not yank Qwen out from under it. Let
+                # ensure_ready's own preflight decide (will likely still
+                # fail, surfacing the real "document grounding unavailable"
+                # state rather than corrupting a concurrent generation).
+                _log_transition(
+                    action="SKIP_STOP_QWEN_BUSY",
+                    active_jobs=self._qwen_active_jobs,
+                    commit_headroom_mb=round(mem.commit_headroom_mb, 1),
+                )
+                worker_mgr.ensure_ready(timeout)
+                return
+
+            self._state = ResourceState.TRANSITIONING
+            headroom_before = mem.commit_headroom_mb
+            _log_transition(
+                action="STOP_QWEN_FOR_EMBEDDING",
+                commit_headroom_before_mb=round(headroom_before, 1),
+                threshold_mb=settings.BGE_MIN_COMMIT_HEADROOM_MB,
+            )
+            self.unload_qwen()
+
+            recovered, headroom_after = self._wait_for_commit_recovery(
+                settings.BGE_MIN_COMMIT_HEADROOM_MB, settings.RESOURCE_RELEASE_TIMEOUT_SECONDS
+            )
+            self._state = ResourceState.NORMAL if recovered else ResourceState.MEMORY_PRESSURE
+            _log_transition(
+                action="STOP_QWEN_FOR_EMBEDDING_COMPLETE",
+                commit_headroom_before_mb=round(headroom_before, 1),
+                commit_headroom_after_mb=round(headroom_after, 1),
+                recovered=recovered,
+            )
+            # Whichever way recovery went, let ensure_ready's own preflight
+            # make the final call -- it re-checks headroom itself, so this
+            # doesn't duplicate the safety check or risk drifting from it.
+            worker_mgr.ensure_ready(timeout)
 
 
 _resource_manager_lock = threading.Lock()

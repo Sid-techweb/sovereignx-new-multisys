@@ -126,11 +126,16 @@ MODEL_PROVIDER=mock
 
 ### Using Local Ollama Integration
 To route requests to a local LLM instance:
-1. Ensure Ollama is running locally on your system.
+1. Ensure Ollama is running locally on your system, and pull the model you want:
+   ```bash
+   ollama pull qwen3.5:4b
+   ```
 2. Edit `.env` to set:
    ```env
    MODEL_PROVIDER=ollama
    OLLAMA_BASE_URL=http://localhost:11434
-   MODEL_NAME=qwen2.5  # Or any other model pulled via `ollama pull`
+   MODEL_NAME=qwen3.5:4b  # SovereignX default (2026-08 benchmark) -- or any other model pulled via `ollama pull`
+   OLLAMA_THINK=false     # Optional: disables "thinking" mode on models that support it (see below)
    ```
+   SovereignX is model-configurable -- swap `MODEL_NAME` to any locally pulled Ollama model (e.g. `qwen2.5:7b`, `phi4-mini`) with no code changes. `OLLAMA_THINK` is likewise config-driven, not hardcoded per model: leave it unset to omit the field entirely (always safe, including for models with no thinking mode), or set `true`/`false` to force a specific model's thinking behavior.
 3. Restart the FastAPI server. If the Ollama server is offline, the backend will launch successfully but mark the provider status as `offline` in `/models`.

@@ -33,6 +33,15 @@ DOCUMENT_RAG_CHAT_SYSTEM_PROMPT = (
     "Never claim you searched the internet or have live/current information."
 )
 
+ARITHMETIC_CHAT_SYSTEM_PROMPT = (
+    "You are SovereignX, an AI assistant that runs entirely locally/on-premise.\n\n"
+    "The user asked a calculation question. Below is the VERIFIED result of that "
+    "calculation, computed by a deterministic calculator -- not by you. You may "
+    "explain the steps and present the result clearly, but the final numeric "
+    "answer you state MUST match the verified result exactly. Do not recompute, "
+    "re-derive, second-guess, or adjust the verified number."
+)
+
 MULTIMODAL_CHAT_SYSTEM_PROMPT = (
     "You are SovereignX, an AI assistant that runs entirely locally/on-premise.\n\n"
     "The user has attached an image. Below is a locally generated description/OCR "
@@ -66,3 +75,7 @@ def build_rag_context_block(retrieved_chunks: List[Dict[str, Any]]) -> str:
 
 def build_multimodal_context_block(extracted_text: str, filename: str) -> str:
     return f"--- Extracted content from image: {filename} ---\n{(extracted_text or '').strip()}"
+
+
+def build_arithmetic_context_block(expression: str, result: float) -> str:
+    return f"Verified calculation: {expression} = {result}"

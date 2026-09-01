@@ -47,6 +47,21 @@ class TestGatewayArchitecture(unittest.TestCase):
             self.assertTrue(isinstance(gateway, MockGateway))
             self.assertTrue(hasattr(gateway, "analyze"))
 
+    def test_factory_threads_ollama_think_from_settings(self):
+        """OLLAMA_THINK is config-driven, not hardcoded per model in the
+        gateway -- the factory must pass the currently configured value
+        straight through, whatever MODEL_NAME is set to."""
+        with patch.object(settings, "MODEL_PROVIDER", "ollama"), \
+             patch.object(settings, "OLLAMA_THINK", False):
+            gateway = get_gateway()
+            self.assertIsInstance(gateway, OllamaGateway)
+            self.assertEqual(gateway.think, False)
+
+        with patch.object(settings, "MODEL_PROVIDER", "ollama"), \
+             patch.object(settings, "OLLAMA_THINK", None):
+            gateway = get_gateway()
+            self.assertIsNone(gateway.think)
+
     def test_invalid_provider(self):
         """Test 4 — Invalid provider: clean configuration/provider error"""
         with patch.object(settings, "MODEL_PROVIDER", "invalid"):

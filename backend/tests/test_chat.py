@@ -226,14 +226,22 @@ class TestChatEndpoints(unittest.TestCase):
         self.assertEqual(res.status_code, 503)
         self.assertIn("Local language model is currently unavailable", res.json()["detail"])
 
-    # --- RAG retrieval failure must not prevent general chat from working ---
+    # --- Explicit document requests must NEVER silently degrade to GENERAL_CHAT ---
+    #
+    # This was a real bug caught by a live benchmark: after Qwen loaded and
+    # became resident, a second consecutive DOCUMENT_RAG turn found BGE
+    # unable to start, and the OLD behavior silently answered as
+    # GENERAL_CHAT -- an ungrounded answer presented as if grounding had
+    # succeeded. The fix: an explicit document request that cannot be
+    # grounded must return route=DOCUMENT_RAG with rag_unavailable_reason
+    # set and a fixed refusal answer, never a normal-looking answer, and
+    # must NOT call the model gateway at all.
 
     @patch("app.rag.retriever.KnowledgeBaseRetriever.retrieve")
     @patch("app.rag.embeddings.BGEM3EmbeddingProvider.get_embedding")
-    def test_rag_failure_degrades_to_general_chat_instead_of_blocking(self, mock_get_embedding, mock_retrieve):
+    def test_explicit_document_request_never_silently_becomes_general_chat(self, mock_get_embedding, mock_retrieve):
         from app.rag.exceptions import DatabaseConnectionError
         mock_retrieve.side_effect = DatabaseConnectionError("pgvector unreachable")
-        self.mock_gateway.chat_completion.return_value = "Here is a general answer instead."
         conversation_id = self._new_conversation()
 
         res = self.client.post(
@@ -243,8 +251,85 @@ class TestChatEndpoints(unittest.TestCase):
 
         self.assertEqual(res.status_code, 200)
         data = res.json()
-        self.assertEqual(data["route"], "GENERAL_CHAT")
-        self.assertIsNotNone(data["rag_degraded_reason"])
+        self.assertEqual(data["route"], "DOCUMENT_RAG")
+        self.assertIsNone(data["rag_degraded_reason"])
+        self.assertIsNotNone(data["rag_unavailable_reason"])
+        self.assertIn("document-grounded", data["answer"])
+        # Internal diagnostics must not leak to the user-facing answer.
+        self.assertNotIn("pgvector unreachable", data["answer"])
+        # The gateway must never have been called for this turn.
+        self.mock_gateway.chat_completion.assert_not_called()
+
+    def test_document_grounding_unavailable_reports_reason_without_leaking_internals(self):
+        from app.rag.exceptions import EmbeddingModelUnavailableError
+        self.mock_resource_manager.ensure_embedding_capacity.side_effect = EmbeddingModelUnavailableError(
+            "Local embedding model is temporarily unavailable: insufficient system memory headroom "
+            "(915MB free, 2048MB safety margin required)."
+        )
+        conversation_id = self._new_conversation()
+
+        res = self.client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"message": "According to the uploaded document, what is P-101's max temperature?"},
+        )
+
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["route"], "DOCUMENT_RAG")
+        self.assertIsNotNone(data["rag_unavailable_reason"])
+        self.assertNotIn("915MB", data["answer"])
+        self.assertNotIn("commit", data["answer"].lower())
+
+    @patch("app.rag.retriever.KnowledgeBaseRetriever.retrieve")
+    @patch("app.rag.embeddings.BGEM3EmbeddingProvider.get_embedding")
+    def test_five_consecutive_document_requests_all_stay_grounded(self, mock_get_embedding, mock_retrieve):
+        """Regression test for the exact failure pattern the benchmark found:
+        repeated document-scoped turns in the same conversation must all
+        stay DOCUMENT_RAG, never silently drift to GENERAL_CHAT."""
+        mock_retrieve.return_value = (
+            [{
+                "chunk_id": "c1", "document_id": "d1", "filename": "pump_sop.pdf",
+                "source": "user_upload", "content": "Pump P-101 max temp 85 C.",
+                "score": 0.9, "metadata": {}
+            }],
+            False,
+        )
+        self.mock_gateway.chat_completion.return_value = "85 C [pump_sop.pdf]."
+        conversation_id = self._new_conversation()
+
+        for i in range(5):
+            res = self.client.post(
+                f"/chat/conversations/{conversation_id}/messages",
+                json={"message": f"According to the document, question {i}?"},
+            )
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertEqual(data["route"], "DOCUMENT_RAG", f"turn {i} did not stay DOCUMENT_RAG")
+            self.assertIsNone(data["rag_unavailable_reason"])
+
+    # --- Deterministic arithmetic routing ---
+
+    def test_arithmetic_question_uses_verified_tool_result(self):
+        self.mock_gateway.chat_completion.return_value = "10384 x 827 = 8587568."
+        conversation_id = self._new_conversation()
+
+        res = self.client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"message": "What is 10384 times 827? Explain the steps."},
+        )
+
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["route"], "EXISTING_TOOL_FLOW")
+        self.assertEqual(len(data["tool_executions"]), 1)
+        self.assertEqual(data["tool_executions"][0]["outputs"]["computed"], 8587568.0)
+        # The gateway IS still called (to explain the verified result), but
+        # the verified number must have been computed deterministically,
+        # not asserted from the (mocked) LLM's own output.
+        self.mock_gateway.chat_completion.assert_called_once()
+        sent_messages = self.mock_gateway.chat_completion.call_args[0][0]
+        joined = " ".join(m["content"] for m in sent_messages)
+        self.assertIn("8587568", joined)
 
     # --- Conversation history endpoint ---
 

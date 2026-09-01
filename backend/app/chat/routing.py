@@ -2,6 +2,8 @@ import re
 from enum import Enum
 from typing import Optional
 
+from app.chat.arithmetic import is_arithmetic_request
+
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}
 
 
@@ -78,13 +80,26 @@ def is_document_scoped_message(message: str) -> bool:
     return bool(_DOCUMENT_SCOPED_REGEX.search(message))
 
 
+# Signals a deliberate pivot away from document-grounded continuation back
+# to a general/conceptual question, even mid-conversation right after a
+# DOCUMENT_RAG turn -- e.g. "Explain why temperature monitoring matters
+# generally." Kept as a small, explicit, deterministic list rather than any
+# kind of topic classifier.
+_GENERAL_PIVOT_RE = re.compile(
+    r"\bin general\b|\bgenerally\b|\bconceptually\b|\bas a concept\b|\bin theory\b",
+    re.IGNORECASE,
+)
+
+
 def classify_route(
     message: str,
     attached_document_id: Optional[str] = None,
     attached_document_file_type: Optional[str] = None,
+    previous_route: Optional["ChatRoute"] = None,
 ) -> ChatRoute:
     """
-    Selects GENERAL_CHAT, DOCUMENT_RAG, or MULTIMODAL for a chat turn.
+    Selects GENERAL_CHAT, DOCUMENT_RAG, MULTIMODAL, or EXISTING_TOOL_FLOW
+    for a chat turn.
 
     Rules (deterministic, no external/cloud classifier):
     1. A document explicitly attached to *this* turn always grounds the
@@ -92,9 +107,31 @@ def classify_route(
        supported document type routes to DOCUMENT_RAG.
     2. Otherwise, explicit document-referencing phrasing in the message
        (e.g. "according to this document", "summarize the uploaded PDF")
-       routes to DOCUMENT_RAG against the whole knowledge base.
-    3. Everything else defaults to GENERAL_CHAT. Documents merely existing
-       in the knowledge base does NOT force RAG.
+       routes to DOCUMENT_RAG against the whole knowledge base. This is
+       checked before the arithmetic check below, since "according to the
+       document, what is 45 times the value listed?" means look the value
+       up, not treat the numbers as already-known literals.
+    3. Otherwise, an obvious deterministic arithmetic/calculation request
+       (e.g. "what is 10384 times 827?") routes to EXISTING_TOOL_FLOW, so
+       the numeric answer comes from the existing safe AST evaluator
+       (app/tools/calculation_verifier.py) rather than free-text LLM math --
+       see app/chat/arithmetic.py's module docstring for why (measured:
+       even a fast/correct model can burn a large token budget re-deriving
+       something a calculator gets right instantly, and can fail to
+       terminate at all on some inputs).
+    4. Otherwise, if the immediately preceding turn in *this* conversation
+       was DOCUMENT_RAG/EXISTING_TOOL_FLOW, a natural short follow-up (e.g.
+       "What is its vibration limit?", with no document phrase of its own)
+       stays DOCUMENT_RAG too -- a real conversation about a document
+       doesn't repeat "according to the document" every single turn. This
+       "stickiness" breaks the moment the user signals a deliberate pivot to
+       a general/conceptual question (see _GENERAL_PIVOT_RE) or the message
+       is itself an arithmetic request (already routed above).
+    5. Everything else defaults to GENERAL_CHAT. Documents merely existing
+       in the knowledge base does NOT force RAG, and messages that merely
+       mention numbers or math vocabulary ("Explain calculus", "How are
+       multiplication and exponentiation different?") do NOT force the
+       tool route -- see arithmetic.py's extraction guard.
     """
     if attached_document_id:
         if attached_document_file_type and attached_document_file_type.lower() in IMAGE_EXTENSIONS:
@@ -102,6 +139,12 @@ def classify_route(
         return ChatRoute.DOCUMENT_RAG
 
     if is_document_scoped_message(message):
+        return ChatRoute.DOCUMENT_RAG
+
+    if is_arithmetic_request(message):
+        return ChatRoute.EXISTING_TOOL_FLOW
+
+    if previous_route in (ChatRoute.DOCUMENT_RAG, ChatRoute.EXISTING_TOOL_FLOW) and not _GENERAL_PIVOT_RE.search(message or ""):
         return ChatRoute.DOCUMENT_RAG
 
     return ChatRoute.GENERAL_CHAT

@@ -27,6 +27,12 @@ class ChatTurnResponse(BaseModel):
     retrieved_chunks: List[Dict[str, Any]] = []
     tool_executions: List[Dict[str, Any]] = []
     rag_degraded_reason: Optional[str] = None
+    # Set when an EXPLICIT document-grounded request (DOCUMENT_RAG route)
+    # could not be grounded even after attempting the reverse Qwen->BGE
+    # resource transition. When set, `answer` is a fixed, user-facing
+    # "document grounding unavailable" message, NEVER an ungrounded normal
+    # answer presented as if retrieval had succeeded -- see chat/service.py.
+    rag_unavailable_reason: Optional[str] = None
     timings_ms: Dict[str, float] = {}
 
 class ChatMessageOut(BaseModel):

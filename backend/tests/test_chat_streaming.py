@@ -238,20 +238,78 @@ class TestChatStreamingEndpoint(unittest.TestCase):
         self.assertEqual(events[-1]["route"], "DOCUMENT_RAG")
         mock_retrieve.assert_called_once()
 
+    # --- Explicit document requests never silently degrade over streaming ---
+
+    @patch("app.rag.retriever.KnowledgeBaseRetriever.retrieve")
+    @patch("app.rag.embeddings.BGEM3EmbeddingProvider.get_embedding")
+    def test_streaming_explicit_document_request_never_silently_becomes_general_chat(
+        self, mock_get_embedding, mock_retrieve
+    ):
+        from app.rag.exceptions import DatabaseConnectionError
+        mock_retrieve.side_effect = DatabaseConnectionError("pgvector unreachable")
+        conversation_id = self._new_conversation()
+
+        res = self.client.post(
+            f"/chat/conversations/{conversation_id}/messages/stream",
+            json={"message": "According to the document, what is the limit?"},
+        )
+        self.assertEqual(res.status_code, 200)
+        events = _read_ndjson(res)
+        self.assertEqual(events[0]["type"], "start")
+        self.assertEqual(events[0]["route"], "DOCUMENT_RAG")
+        self.assertIsNotNone(events[0]["rag_unavailable_reason"])
+        done_event = events[-1]
+        self.assertEqual(done_event["type"], "done")
+        self.assertEqual(done_event["route"], "DOCUMENT_RAG")
+        self.assertIn("document-grounded", done_event["answer"])
+        self.assertNotIn("pgvector unreachable", done_event["answer"])
+        self.mock_gateway.stream_chat_completion.assert_not_called()
+
+    @patch("app.rag.retriever.KnowledgeBaseRetriever.retrieve")
+    @patch("app.rag.embeddings.BGEM3EmbeddingProvider.get_embedding")
+    def test_streaming_five_consecutive_document_requests_all_stay_grounded(
+        self, mock_get_embedding, mock_retrieve
+    ):
+        mock_retrieve.return_value = (
+            [{
+                "chunk_id": "c1", "document_id": "d1", "filename": "pump_sop.pdf",
+                "source": "user_upload", "content": "Pump P-101 max temp 85 C.",
+                "score": 0.9, "metadata": {}
+            }],
+            False,
+        )
+        self.mock_gateway.stream_chat_completion = _fake_stream([
+            StreamChunk(content="85 C [pump_sop.pdf].", done=False),
+            StreamChunk(content="", done=True, metadata={"eval_count": 8}),
+        ])
+        conversation_id = self._new_conversation()
+
+        for i in range(5):
+            res = self.client.post(
+                f"/chat/conversations/{conversation_id}/messages/stream",
+                json={"message": f"According to the document, question {i}?"},
+            )
+            self.assertEqual(res.status_code, 200)
+            events = _read_ndjson(res)
+            self.assertEqual(events[0]["route"], "DOCUMENT_RAG", f"turn {i} did not stay DOCUMENT_RAG")
+            self.assertIsNone(events[0]["rag_unavailable_reason"])
+
     # --- No external network dependency for streamed general chat ---
 
     @patch("app.rag.retriever.KnowledgeBaseRetriever.retrieve")
     def test_streaming_general_chat_never_touches_retriever(self, mock_retrieve):
         self.mock_gateway.stream_chat_completion = _fake_stream([
-            StreamChunk(content="42", done=False),
+            StreamChunk(content="Quantum computing uses qubits.", done=False),
             StreamChunk(content="", done=True, metadata={"eval_count": 1}),
         ])
         conversation_id = self._new_conversation()
         res = self.client.post(
             f"/chat/conversations/{conversation_id}/messages/stream",
-            json={"message": "What is 6 times 7?"},
+            json={"message": "Explain quantum computing."},
         )
         self.assertEqual(res.status_code, 200)
+        events = _read_ndjson(res)
+        self.assertEqual(events[0]["route"], "GENERAL_CHAT")
         mock_retrieve.assert_not_called()
 
     # --- Conversation history still works over streaming ---

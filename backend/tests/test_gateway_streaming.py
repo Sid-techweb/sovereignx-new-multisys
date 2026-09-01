@@ -95,6 +95,71 @@ class TestOllamaKeepAlive(unittest.TestCase):
         self.assertTrue(sent_payload["stream"])
 
 
+class TestOllamaThink(unittest.TestCase):
+    """
+    Model-aware `think` generation option (Settings.OLLAMA_THINK), driven by
+    config rather than hardcoded per model in the gateway. Applied uniformly
+    to both chat_completion and stream_chat_completion, so GENERAL_CHAT,
+    DOCUMENT_RAG, and EXISTING_TOOL_FLOW (which all share these two gateway
+    methods) get consistent generation behavior automatically.
+    """
+
+    @patch("httpx.AsyncClient.post")
+    def test_chat_completion_includes_configured_think_false(self, mock_post):
+        import asyncio
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"message": {"content": "hi"}}
+
+        async def fake_post(*args, **kwargs):
+            return mock_response
+        mock_post.side_effect = fake_post
+
+        gateway = OllamaGateway(base_url="http://localhost:11434", model_name="qwen3.5:4b", think=False)
+        asyncio.run(gateway.chat_completion([{"role": "user", "content": "hi"}]))
+
+        sent_payload = mock_post.call_args.kwargs["json"]
+        self.assertEqual(sent_payload["think"], False)
+
+    @patch("httpx.AsyncClient.post")
+    def test_chat_completion_omits_think_when_not_configured(self, mock_post):
+        import asyncio
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"message": {"content": "hi"}}
+
+        async def fake_post(*args, **kwargs):
+            return mock_response
+        mock_post.side_effect = fake_post
+
+        # think=None (the default when unset) -- must be safe for any model,
+        # including one with no thinking capability at all (e.g. qwen2.5:7b).
+        gateway = OllamaGateway(base_url="http://localhost:11434", model_name="qwen2.5:7b")
+        asyncio.run(gateway.chat_completion([{"role": "user", "content": "hi"}]))
+
+        sent_payload = mock_post.call_args.kwargs["json"]
+        self.assertNotIn("think", sent_payload)
+
+    @patch("httpx.AsyncClient.stream")
+    def test_stream_chat_completion_includes_configured_think_false(self, mock_stream):
+        import asyncio
+        lines = _ndjson(
+            {"message": {"content": "hi"}, "done": False},
+            {"message": {"content": ""}, "done": True, "total_duration": 1, "load_duration": 1,
+             "prompt_eval_duration": 1, "eval_duration": 1, "prompt_eval_count": 1, "eval_count": 1},
+        )
+        mock_stream.return_value = _FakeStreamCtx(_FakeOllamaStreamResponse(lines))
+
+        gateway = OllamaGateway(base_url="http://localhost:11434", model_name="qwen3.5:4b", think=False)
+
+        async def collect():
+            return [c async for c in gateway.stream_chat_completion([{"role": "user", "content": "hi"}])]
+        asyncio.run(collect())
+
+        sent_payload = mock_stream.call_args.kwargs["json"]
+        self.assertEqual(sent_payload["think"], False)
+
+
 class TestOllamaStreamChatCompletion(unittest.TestCase):
     """Priority 2 (gateway layer): stream_chat_completion parses Ollama's
     NDJSON stream into incremental chunks and preserves the final timing

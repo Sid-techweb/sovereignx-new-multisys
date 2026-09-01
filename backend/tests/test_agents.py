@@ -258,7 +258,11 @@ class TestAgentWiring(unittest.TestCase):
             self.assertEqual(data["confidence"], 0.85) # (0.9 + 0.8) / 2
             self.assertEqual(len(data["tool_executions"]), 2)
             self.assertEqual(data["tool_executions"][0]["context_id"], "test-context-123")
-            self.assertEqual(data["metadata"]["model_used"], "qwen2.5:7b")
+            # Reads the real gateway (MODEL_PROVIDER=ollama patched above, not
+            # mocked) -- must reflect whatever MODEL_NAME is actually
+            # configured, not a hardcoded model, so this doesn't break on
+            # every future default-model change.
+            self.assertEqual(data["metadata"]["model_used"], settings.MODEL_NAME)
 
     @patch("app.rag.retriever.KnowledgeBaseRetriever.retrieve")
     @patch("app.rag.embeddings.BGEM3EmbeddingProvider.get_embedding")

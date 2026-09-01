@@ -9,13 +9,27 @@ from app.gateway.exceptions import OllamaUnavailableError, ProviderExecutionErro
 logger = logging.getLogger("sovereignx")
 
 class OllamaGateway(ModelGateway):
-    def __init__(self, base_url: str, model_name: str, keep_alive: Optional[str] = None):
+    def __init__(
+        self,
+        base_url: str,
+        model_name: str,
+        keep_alive: Optional[str] = None,
+        think: Optional[bool] = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name or "qwen2.5:7b"
         # Ollama duration string (e.g. "30m") controlling how long the model
         # stays resident after a request. None lets Ollama use its own
         # default (5 minutes) rather than sending the field at all.
         self.keep_alive = keep_alive
+        # Model-aware, not model-specific: a config-driven generation option
+        # (see Settings.OLLAMA_THINK) rather than a per-model branch in this
+        # gateway. None omits the "think" field entirely, which is always
+        # safe to do for any model. Applied uniformly to every chat route
+        # (GENERAL_CHAT/DOCUMENT_RAG/EXISTING_TOOL_FLOW/MULTIMODAL all share
+        # chat_completion/stream_chat_completion below), so no route gets
+        # inconsistent generation behavior.
+        self.think = think
 
     async def generate(self, prompt: str, system_prompt: str = None) -> str:
         """
@@ -129,6 +143,8 @@ class OllamaGateway(ModelGateway):
         }
         if self.keep_alive is not None:
             payload["keep_alive"] = self.keep_alive
+        if self.think is not None:
+            payload["think"] = self.think
 
         try:
             logger.info(f"Sending chat completion to Ollama model '{self.model_name}' ({len(messages)} messages)")
@@ -178,6 +194,8 @@ class OllamaGateway(ModelGateway):
         }
         if self.keep_alive is not None:
             payload["keep_alive"] = self.keep_alive
+        if self.think is not None:
+            payload["think"] = self.think
 
         logger.info(f"Sending streaming chat completion to Ollama model '{self.model_name}' ({len(messages)} messages)")
         try:
