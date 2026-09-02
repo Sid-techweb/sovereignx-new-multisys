@@ -255,6 +255,57 @@ class LocalToolRegistry:
             func=evaluate_arithmetic_expression
         )
 
+        # Tools 6-8: workspace file I/O (agent planner tools -- see
+        # app/services/agent_tools.py for the path-safety model). Every call
+        # is scoped to workspace_id, typically the conversation_id/task_id.
+        from app.services.agent_tools import read_file, write_file, list_files, execute_python
+
+        self.register_tool(
+            name="read_file",
+            description="Reads a UTF-8 text file from the agent's isolated task workspace. Cannot read outside the workspace or the host filesystem.",
+            parameters={
+                "workspace_id": ParameterDefinition(type="str", description="Workspace/task identifier (e.g. the conversation id) -- scopes which files are visible."),
+                "path": ParameterDefinition(type="str", description="File path relative to the workspace root, e.g. 'notes.txt' or 'data/readings.csv'."),
+            },
+            func=read_file
+        )
+
+        self.register_tool(
+            name="write_file",
+            description="Writes UTF-8 text content to a file in the agent's isolated task workspace, creating parent directories as needed. Cannot write outside the workspace.",
+            parameters={
+                "workspace_id": ParameterDefinition(type="str", description="Workspace/task identifier (e.g. the conversation id)."),
+                "path": ParameterDefinition(type="str", description="File path relative to the workspace root."),
+                "content": ParameterDefinition(type="str", description="UTF-8 text content to write."),
+            },
+            func=write_file
+        )
+
+        self.register_tool(
+            name="list_files",
+            description="Lists all files currently present in the agent's isolated task workspace, with sizes.",
+            parameters={
+                "workspace_id": ParameterDefinition(type="str", description="Workspace/task identifier (e.g. the conversation id)."),
+            },
+            func=list_files
+        )
+
+        # Tool 9: execute_python (sandboxed)
+        self.register_tool(
+            name="execute_python",
+            description=(
+                "Executes a standalone Python script in an isolated, network-disabled, "
+                "memory/CPU-capped Docker sandbox and returns stdout/stderr/exit_code. "
+                "Use for calculations, data processing, or verifying generated code. "
+                "The script cannot access the network or the host filesystem."
+            ),
+            parameters={
+                "code": ParameterDefinition(type="str", description="Complete Python source code to execute as a standalone script."),
+                "timeout_seconds": ParameterDefinition(type="float", description="Maximum wall-clock seconds before the execution is terminated.", required=False, default=15.0),
+            },
+            func=execute_python
+        )
+
 
 # Default tool implementation functions
 
