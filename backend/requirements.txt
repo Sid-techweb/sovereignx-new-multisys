@@ -14,6 +14,7 @@ python-pptx>=0.6.23
 openpyxl>=3.1.2
 bitsandbytes>=0.42.0
 accelerate>=0.26.0
+PyMuPDF>=1.24.0
 
 
 
