@@ -221,35 +221,40 @@ class ImageExtractor(DocumentExtractor):
                 }
             ]
             
-            from qwen_vl_utils import process_vision_info
-            text_prompt = self._processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            image_inputs, video_inputs = process_vision_info(messages)
-            inputs = self._processor(
-                text=[text_prompt],
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
-                return_tensors="pt",
-            )
-            
-            # Move inputs to target model device
-            device = next(self._model.parameters()).device
-            if not ("Mock" in type(device).__name__ or hasattr(device, "_spec_class")):
-                inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
-            
-            # Perform inference under torch.no_grad
-            with torch.no_grad():
-                generated_ids = self._model.generate(**inputs, max_new_tokens=512)
+            try:
+                from qwen_vl_utils import process_vision_info
+                text_prompt = self._processor.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
+                image_inputs, video_inputs = process_vision_info(messages)
+                inputs = self._processor(
+                    text=[text_prompt],
+                    images=image_inputs,
+                    videos=video_inputs,
+                    padding=True,
+                    return_tensors="pt",
+                )
                 
-            generated_ids_trimmed = [
-                out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs["input_ids"], generated_ids)
-            ]
-            extracted_text = self._processor.batch_decode(
-                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-            )[0].strip()
-            extracted_text = strip_conversational_preamble(extracted_text)
+                # Move inputs to target model device
+                device = next(self._model.parameters()).device
+                if not ("Mock" in type(device).__name__ or hasattr(device, "_spec_class")):
+                    inputs = {k: v.to(device) if hasattr(v, "to") else v for k, v in inputs.items()}
+                
+                # Perform inference under torch.no_grad
+                with torch.no_grad():
+                    generated_ids = self._model.generate(**inputs, max_new_tokens=512)
+                    
+                generated_ids_trimmed = [
+                    out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs["input_ids"], generated_ids)
+                ]
+                extracted_text = self._processor.batch_decode(
+                    generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+                )[0].strip()
+                extracted_text = strip_conversational_preamble(extracted_text)
+            except Exception as vlm_err:
+                logger.warning(f"Qwen2-VL inference failed: {vlm_err}. Falling back to image metadata captioning.")
+                extracted_text = f"[Image Metadata Document: {filename or 'Image'}]\nWidth: {width}px, Height: {height}px, Format: {image.format or 'RGB'}\nMode: {mode}"
+                device = "cpu"
             
             metadata = {
                 "image_width": width,

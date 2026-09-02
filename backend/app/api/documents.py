@@ -83,6 +83,9 @@ def execute_auto_indexing(document_id: str):
         if extracted_file.exists():
             try:
                 extracted_doc = storage.get_extracted_document(document_id)
+                if extracted_doc and (extracted_doc.extraction_status in ["failed", "not_implemented"] or not extracted_doc.content.strip()):
+                    logger.info(f"Ignoring stale/failed cached extraction file for {document_id}")
+                    extracted_doc = None
             except Exception:
                 extracted_doc = None
 
@@ -115,7 +118,7 @@ def execute_auto_indexing(document_id: str):
                 with open(extracted_file, "w", encoding="utf-8") as f:
                     json.dump(extracted_doc.dict(), f, indent=2)
             except Exception as e:
-                logger.error(f"Auto-extraction failed for document {document_id}: {str(e)}")
+                logger.exception(f"Auto-extraction failed for document {document_id}: {str(e)}")
                 meta["status"] = "failed"
                 meta["error_message"] = f"Extraction failed: {str(e)}"
                 metadata_store.save(document_id, meta)
@@ -136,19 +139,19 @@ def execute_auto_indexing(document_id: str):
             metadata_store.save(document_id, meta)
             logger.info(f"Auto-indexing completed successfully for {document_id} ({chunks_count} chunks)")
         except PartialIndexingError as e:
-            logger.error(f"Auto-indexing partial failure for {document_id}: {str(e)}")
+            logger.exception(f"Auto-indexing partial failure for {document_id}: {str(e)}")
             meta["status"] = "failed_partial"
             meta["failed_at_batch"] = e.failed_at_batch
             meta["chunks_succeeded"] = e.chunks_succeeded
             meta["error_message"] = str(e)
             metadata_store.save(document_id, meta)
         except Exception as e:
-            logger.error(f"Auto-indexing failed for {document_id}: {str(e)}")
+            logger.exception(f"Auto-indexing failed for {document_id}: {str(e)}")
             meta["status"] = "failed"
             meta["error_message"] = f"Indexing failed: {str(e)}"
             metadata_store.save(document_id, meta)
     except Exception as top_e:
-        logger.critical(f"Top-level unhandled exception in execute_auto_indexing for {document_id}: {str(top_e)}", exc_info=True)
+        logger.exception(f"Top-level unhandled exception in execute_auto_indexing for {document_id}: {str(top_e)}")
         try:
             meta = metadata_store.get(document_id)
             if meta:
@@ -297,7 +300,18 @@ async def reindex_document(
             detail=f"Failed to clear partial chunks: {str(e)}"
         )
 
-    # 2. Reset status & error fields
+    # 2. Purge stale extracted json file if present so reindex extracts fresh text
+    safe_doc_id = os.path.basename(document_id)
+    extracted_dir = (storage.base_path / "extracted").resolve()
+    extracted_file = (extracted_dir / f"{safe_doc_id}.json").resolve()
+    if extracted_file.exists():
+        try:
+            os.remove(extracted_file)
+            logger.info(f"Purged stale extracted json file for document {document_id}")
+        except Exception as e:
+            logger.warning(f"Failed to remove extracted file during reindex: {e}")
+
+    # 3. Reset status & error fields
     meta["status"] = "indexing"
     meta["failed_at_batch"] = None
     meta["chunks_succeeded"] = None
