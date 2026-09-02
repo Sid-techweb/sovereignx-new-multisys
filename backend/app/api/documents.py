@@ -436,7 +436,39 @@ async def get_document_content(document_id: str):
     if not extracted_file.is_relative_to(extracted_dir):
         raise HTTPException(status_code=400, detail="Path traversal attempt detected.")
     if not extracted_file.exists():
-        # Return empty content with current processing state if not processed yet
+        ext = f".{meta['file_type']}"
+        storage_name = f"{document_id}{ext}"
+        if storage.exists(storage_name):
+            try:
+                content_bytes = storage.get(storage_name)
+                extractor = get_extractor(ext)
+                extracted_text, extra_meta = extractor.extract(content_bytes, filename=meta["filename"])
+                extraction_status = "processed_with_no_text" if not extracted_text else "processed"
+                extracted_doc = ExtractedDocument(
+                    document_id=document_id,
+                    filename=meta["filename"],
+                    source=meta["source"],
+                    content=extracted_text,
+                    content_type="text",
+                    extraction_status=extraction_status,
+                    metadata={
+                        **extra_meta,
+                        "mime_type": meta["mime_type"],
+                        "file_size": meta["file_size"],
+                        "uploaded_at": meta["uploaded_at"],
+                        "checksum_sha256": meta.get("checksum_sha256"),
+                        "case_id": meta.get("case_id")
+                    },
+                    created_at=meta["uploaded_at"]
+                )
+                extracted_dir.mkdir(parents=True, exist_ok=True)
+                with open(extracted_file, "w", encoding="utf-8") as f:
+                    json.dump(extracted_doc.model_dump(), f, indent=2)
+                return extracted_doc
+            except Exception as e:
+                logger.error(f"On-the-fly extraction fallback failed for {document_id}: {str(e)}")
+
+        # Return empty content with current processing state if file not present in storage
         return ExtractedDocument(
             document_id=document_id,
             filename=meta["filename"],

@@ -113,21 +113,30 @@ export default function Documents({ documents = [], loading = false, onRefresh }
     }
   };
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('sovereignx_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : { 'X-API-Key': API_KEY };
+  };
+
   const handleViewDetails = async (docId) => {
     setLoadingContent(true);
     setContentError(null);
     setExtractedContent(null);
     
-    // Find metadata first
-    const meta = documents.find(d => d.document_id === docId);
-    setSelectedDoc(meta);
+    // Find metadata first matching either document_id or id
+    const meta = documents.find(d => (d.document_id || d.id) === docId);
+    if (meta) {
+      setSelectedDoc(meta);
+    }
 
     try {
+      const headers = getAuthHeaders();
       const response = await fetch(`${API_BASE}/documents/${docId}/content`, {
-        headers: { 'X-API-Key': API_KEY }
+        headers
       });
       if (!response.ok) {
-        throw new Error('Failed to load extracted document details.');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to load extracted document details.');
       }
       const data = await response.json();
       setExtractedContent(data);
@@ -144,9 +153,10 @@ export default function Documents({ documents = [], loading = false, onRefresh }
     setDeleting(true);
     setDeleteError(null);
     try {
-      const response = await fetch(`${API_BASE}/documents/${deleteModalDoc.document_id}`, {
+      const headers = getAuthHeaders();
+      const response = await fetch(`${API_BASE}/documents/${deleteModalDoc.document_id || deleteModalDoc.id}`, {
         method: 'DELETE',
-        headers: { 'X-API-Key': API_KEY }
+        headers
       });
 
       if (!response.ok) {
