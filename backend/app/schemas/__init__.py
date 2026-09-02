@@ -8,7 +8,15 @@ from app.schemas.chat import (
     ChatConversationOut,
     ChatConversationCreateResponse,
 )
-from app.schemas.agents import AgentRunRequest, AgentRunResponse, AgentInvestigateRequest, AgentInvestigateResponse
+from app.schemas.agents import (
+    AgentRunRequest,
+    AgentRunResponse,
+    AgentInvestigateRequest,
+    AgentInvestigateResponse,
+    AgentRunTaskRequest,
+    AgentRunTaskResponse,
+    AgentTaskStepOut,
+)
 from app.schemas.documents import DocumentMetadata, ExtractedDocument
 from app.schemas.analysis import AnalysisRequest, AnalysisResponse
 from app.schemas.tools import (

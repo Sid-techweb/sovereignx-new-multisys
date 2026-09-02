@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -17,9 +18,14 @@ from app.schemas import (
     AgentRunResponse,
     AgentInvestigateRequest,
     AgentInvestigateResponse,
+    AgentRunTaskRequest,
+    AgentRunTaskResponse,
+    AgentTaskStepOut,
     AnalysisRequest
 )
 from app.agents import IntakeAgent, RAGAgent, AnalysisAgent, ReportAgent
+from app.agents.planner import run_agent_task, MAX_AGENT_STEPS
+from app.services.tools import tool_registry
 
 logger = logging.getLogger("sovereignx")
 router = APIRouter()
@@ -140,4 +146,56 @@ async def investigate(
         db=db,
         gateway=gateway,
         context_id=request.context_id
+    )
+
+
+@router.post("/agents/run-task", response_model=AgentRunTaskResponse)
+async def run_task(
+    request: AgentRunTaskRequest,
+    gateway: ModelGateway = Depends(get_gateway)
+):
+    """
+    Bounded general-purpose agent task flow (Planner): a separate capability
+    from /agents/investigate's fixed four-agent RAG pipeline. Runs a
+    Thought/Action/Observation loop (see app/agents/planner.py) that can
+    call local tools -- including sandboxed Python execution and
+    workspace-scoped file I/O -- for at most `max_steps` steps before
+    stopping, whatever the outcome.
+    """
+    workspace_id = request.workspace_id or f"task-{uuid.uuid4().hex[:16]}"
+    max_steps = min(request.max_steps, MAX_AGENT_STEPS) if request.max_steps else MAX_AGENT_STEPS
+
+    try:
+        result = await run_agent_task(
+            gateway=gateway,
+            tool_registry=tool_registry,
+            goal=request.goal,
+            workspace_id=workspace_id,
+            max_steps=max_steps,
+        )
+    except (UnsupportedProviderError, OllamaUnavailableError, ProviderInitializationError, ProviderExecutionError):
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in /agents/run-task: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return AgentRunTaskResponse(
+        goal=result.goal,
+        workspace_id=result.workspace_id,
+        steps=[
+            AgentTaskStepOut(
+                step_number=s.step_number,
+                thought=s.thought,
+                action=s.action,
+                action_input=s.action_input,
+                observation=s.observation,
+                observation_status=s.observation_status,
+                is_final=s.is_final,
+            )
+            for s in result.steps
+        ],
+        final_answer=result.final_answer,
+        stopped_reason=result.stopped_reason,
+        step_count=len(result.steps),
+        total_ms=result.total_ms,
     )
