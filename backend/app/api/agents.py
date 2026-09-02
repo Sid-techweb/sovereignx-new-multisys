@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -16,9 +17,15 @@ from app.schemas import (
     AgentRunResponse,
     AgentInvestigateRequest,
     AgentInvestigateResponse,
+    AgentTaskRequest,
+    AgentTaskResponse,
+    AgentStepView,
     AnalysisRequest
 )
 from app.agents import IntakeAgent, RAGAgent, AnalysisAgent, ReportAgent
+from app.agents.planner import run_agent_task, MAX_AGENT_STEPS
+from app.services.tools import LocalToolRegistry
+from app.services.agent_tools import list_files as list_workspace_files
 
 logger = logging.getLogger("sovereignx")
 router = APIRouter()
@@ -127,4 +134,62 @@ async def investigate(
         raise
     except Exception as e:
         logger.error(f"Unexpected error in /agents/investigate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/agents/run-task", response_model=AgentTaskResponse)
+async def run_task(request: AgentTaskRequest, gateway: ModelGateway = Depends(get_gateway)):
+    """
+    Bounded multi-step agentic task: the model plans, calls local tools
+    (file I/O, sandboxed code execution, deterministic calculations, RAG
+    knowledge search -- see LocalToolRegistry), observes results, and
+    iterates until it reaches a Final Answer or the step limit. See
+    app/agents/planner.py for the loop itself and its safety bounds.
+
+    Distinct from /agents/investigate (a fixed retrieve-then-answer
+    pipeline): this is a genuine agent loop that can take several tool
+    actions in sequence to accomplish a goal, not just answer one question.
+    """
+    workspace_id = request.workspace_id or f"task-{uuid.uuid4().hex[:12]}"
+    max_steps = min(request.max_steps, MAX_AGENT_STEPS * 2) if request.max_steps else MAX_AGENT_STEPS
+
+    try:
+        tool_registry = LocalToolRegistry()
+        result = await run_agent_task(
+            gateway=gateway,
+            tool_registry=tool_registry,
+            goal=request.goal,
+            workspace_id=workspace_id,
+            max_steps=max_steps,
+        )
+
+        try:
+            files = list_workspace_files(workspace_id)["files"]
+        except Exception:
+            files = []
+
+        return AgentTaskResponse(
+            goal=result.goal,
+            workspace_id=result.workspace_id,
+            final_answer=result.final_answer,
+            stopped_reason=result.stopped_reason,
+            steps=[
+                AgentStepView(
+                    step_number=s.step_number,
+                    thought=s.thought,
+                    action=s.action,
+                    action_input=s.action_input,
+                    observation=s.observation,
+                    observation_status=s.observation_status,
+                    is_final=s.is_final,
+                )
+                for s in result.steps
+            ],
+            total_ms=result.total_ms,
+            workspace_files=files,
+        )
+    except (UnsupportedProviderError, OllamaUnavailableError, ProviderInitializationError, ProviderExecutionError):
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in /agents/run-task: {e}")
         raise HTTPException(status_code=500, detail=str(e))
