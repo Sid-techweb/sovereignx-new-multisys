@@ -94,6 +94,20 @@ class Settings(BaseSettings):
     # call attempt anyway (its own existing error handling is the fallback).
     RESOURCE_RELEASE_TIMEOUT_SECONDS: float = 15.0
 
+    # Multi-node foundation (NodeRegistry, see app/services/node_registry.py).
+    # Distributed mode is OFF by default -- single-node (this machine) is the
+    # only configuration actually exercised so far. When False, NodeRegistry
+    # registers only the local node from OLLAMA_BASE_URL and never parses
+    # AI_NODES_CONFIG or makes a remote call/health probe of any kind: there
+    # is zero remote dependency in the default deployment. AI_NODES_CONFIG is
+    # a JSON array of node definitions (see NodeRegistry.from_settings for
+    # the exact shape) consulted only when distributed mode is on.
+    # NODE_SHARED_SECRET authenticates node-to-node requests once a worker
+    # API exists (not yet implemented -- foundation only).
+    SOVEREIGN_DISTRIBUTED_MODE: bool = False
+    AI_NODES_CONFIG: str = ""
+    NODE_SHARED_SECRET: str = ""
+
     @field_validator("MODEL_PROVIDER")
     @classmethod
     def validate_provider(cls, v: str) -> str:
