@@ -58,8 +58,30 @@ class SovereigntyMonitor:
 
             # Normalize localhost representation
             clean_host = host.lower()
-            
+
+            # Trusted if in the static dev/demo set OR a configured, approved
+            # "2 lap sov" node (see node_registry.py) -- NOT merely because
+            # it's an RFC1918 private address. An unconfigured private IP is
+            # deliberately still an "alert", matching the explicit
+            # sovereignty requirement that only approved nodes count as
+            # trusted local infrastructure.
             is_trusted = clean_host in TRUSTED_HOSTS
+            network_target = "EXTERNAL"
+            if clean_host in ("localhost", "127.0.0.1", "::1"):
+                network_target = "LOCALHOST"
+                is_trusted = True
+            elif is_trusted:
+                network_target = "LOCALHOST"
+            else:
+                try:
+                    from app.services.node_registry import classify_network_target, NetworkTarget
+                    target = classify_network_target(clean_host)
+                    network_target = target.value
+                    if target == NetworkTarget.PRIVATE_LAN:
+                        is_trusted = True
+                except Exception:
+                    pass
+
             status = "allowed" if is_trusted else "alert"
 
             entry = {
@@ -68,7 +90,8 @@ class SovereigntyMonitor:
                 "url": url,
                 "host": host,
                 "port": port,
-                "status": status
+                "status": status,
+                "network_target": network_target,
             }
 
             self.connections.append(entry)

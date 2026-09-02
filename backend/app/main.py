@@ -7,7 +7,7 @@ from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import health, models, agents, documents, rag, tools, reports, sovereignty, cases, chat
+from app.api import health, models, agents, documents, rag, tools, reports, sovereignty, cases, chat, worker
 from app.api.auth import verify_api_key
 from app.services.sovereignty import apply_monkeypatching
 apply_monkeypatching()
@@ -186,6 +186,11 @@ app.include_router(reports.router, dependencies=[Depends(verify_api_key)])
 app.include_router(cases.router, dependencies=[Depends(verify_api_key)])
 app.include_router(chat.router, dependencies=[Depends(verify_api_key)])
 app.include_router(sovereignty.router)
+# Worker router has its OWN auth (shared-secret X-Node-Token per route, see
+# app/api/worker.py) -- deliberately NOT gated by the user-facing X-API-Key,
+# since this is a machine-to-machine surface for a second SovereignX node,
+# not something a human client calls.
+app.include_router(worker.router)
 
 # LIVENESS vs READINESS (Phase 14-16 of the E5 embedding migration).
 #

@@ -137,6 +137,24 @@ class Settings(BaseSettings):
     # does, and only up to this many seconds.
     MODEL_WARMUP_WAIT_SECONDS: float = 5.0
 
+    # "2 lap sov" -- SovereignX distributed across trusted on-prem nodes over
+    # the private LAN only (see app/services/node_registry.py). Off by
+    # default: a single workstation is a complete, unmodified SovereignX --
+    # distributed mode is strictly additive, never a requirement to run.
+    # No IP/hostname is ever hardcoded: AI_NODES_CONFIG is either a JSON
+    # array string or a path to a JSON file describing remote nodes, e.g.
+    # '[{"node_id":"node_b","url":"http://192.168.1.50:8100","role":"secondary","models":["qwen3.5:4b"]}]'
+    SOVEREIGN_DISTRIBUTED_MODE: bool = False
+    AI_NODES_CONFIG: str = ""
+    # Shared secret required in the X-Node-Token header for the worker-to-
+    # worker endpoints (app/api/worker.py). Empty means worker endpoints
+    # refuse every request -- there is no "no auth" mode for a remote-
+    # callable surface. Set identically on both nodes.
+    NODE_SHARED_SECRET: str = ""
+    NODE_HEALTH_CHECK_TIMEOUT_SECONDS: float = 3.0
+    NODE_REQUEST_TIMEOUT_SECONDS: float = 60.0
+    NODE_MAX_REQUEST_BYTES: int = 2 * 1024 * 1024
+
     @field_validator("MODEL_PROVIDER")
     @classmethod
     def validate_provider(cls, v: str) -> str:
