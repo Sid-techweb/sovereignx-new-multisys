@@ -13,10 +13,12 @@ settings.OLLAMA_BASE_URL -- and never parses AI_NODES_CONFIG or makes any
 remote call. Turning distributed mode on only changes what this registry
 *knows about*; it still performs no remote I/O by itself.
 """
+import ipaddress
 import json
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from app.services.model_registry import HealthState, ModelCapability, LOCAL_NODE_ID
 
@@ -140,3 +142,42 @@ def _build_default_registry() -> NodeRegistry:
 # Singleton instance, same convention as model_registry.model_registry and
 # tools.tool_registry.
 node_registry = _build_default_registry()
+
+
+def classify_node_scope(node_id: str, url: str, registry: Optional[NodeRegistry] = None) -> str:
+    """
+    Sovereignty classification for the audit trail (execution_scope field) --
+    deliberately conservative: an RFC1918 private-range host is classified
+    PRIVATE_LAN only when it is an ALREADY-REGISTERED NodeSpec (i.e. came
+    from AI_NODES_CONFIG, operator-supplied), never merely because the IP
+    happens to look private. Encountering a private IP for a node_id that
+    isn't in the registry -- which the normal routing path never does,
+    since DistributedRouter only ever contacts registered NodeSpecs -- is
+    classified UNTRUSTED, not silently upgraded to sovereign just because
+    the address is non-routable on the public internet.
+
+    Returns one of: "LOCAL" (the in-process default node, no network hop
+    at all), "LOCALHOST" (a separate worker process on the same machine),
+    "PRIVATE_LAN" (a registered node on a private-range address), or
+    "UNTRUSTED".
+    """
+    if node_id == LOCAL_NODE_ID:
+        return "LOCAL"
+
+    registry = registry if registry is not None else node_registry
+    is_registered = registry.get(node_id) is not None
+
+    hostname = urlparse(url).hostname or ""
+    hostname = hostname.strip("[]")  # IPv6 literals in a URL are bracketed
+
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        return "LOCALHOST"
+
+    if is_registered:
+        try:
+            if ipaddress.ip_address(hostname).is_private:
+                return "PRIVATE_LAN"
+        except ValueError:
+            pass  # not a bare IP literal (e.g. a hostname) -- falls through to UNTRUSTED
+
+    return "UNTRUSTED"

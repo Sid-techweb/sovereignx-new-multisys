@@ -1,8 +1,10 @@
 """
 Tests for the multi-node foundation: ModelRegistry (app/services/model_registry.py)
-and NodeRegistry (app/services/node_registry.py). These are catalog/lookup
-structures only -- no remote I/O is exercised here because none exists yet
-(worker API/client is explicitly out of scope for this phase).
+and NodeRegistry (app/services/node_registry.py), plus the sovereignty
+scope classifier used by the Phase 2 execution audit trail. Real
+distributed I/O (worker calls, routing) is covered separately in
+test_worker_client.py and test_distributed_router.py -- this file stays
+focused on the catalog/lookup/classification logic itself.
 """
 import unittest
 from unittest.mock import patch
@@ -19,6 +21,7 @@ from app.services.node_registry import (
     NodeRegistry,
     NodeSpec,
     _parse_ai_nodes_config,
+    classify_node_scope,
     node_registry as default_node_registry,
 )
 
@@ -145,6 +148,37 @@ class TestDistributedModeGating(unittest.TestCase):
             node_ids = {n.node_id for n in registry.list_nodes()}
             self.assertIn("worker-2", node_ids)
             self.assertTrue(registry.is_distributed())
+
+
+class TestSovereigntyClassification(unittest.TestCase):
+    """classify_node_scope must never automatically trust an unregistered
+    private-range address -- PRIVATE_LAN is only reachable for a NodeSpec
+    that actually exists in the registry (i.e. operator-configured via
+    AI_NODES_CONFIG)."""
+
+    def test_local_node_id_is_classified_local(self):
+        self.assertEqual(classify_node_scope(LOCAL_NODE_ID, "http://localhost:11434"), "LOCAL")
+
+    def test_registered_localhost_worker_is_classified_localhost(self):
+        registry = NodeRegistry()
+        registry.register(NodeSpec(node_id="node-b", url="http://127.0.0.1:9001", role="worker"))
+        self.assertEqual(classify_node_scope("node-b", "http://127.0.0.1:9001", registry), "LOCALHOST")
+
+    def test_registered_private_lan_worker_is_classified_private_lan(self):
+        registry = NodeRegistry()
+        registry.register(NodeSpec(node_id="node-b", url="http://192.168.1.50:9001", role="worker"))
+        self.assertEqual(classify_node_scope("node-b", "http://192.168.1.50:9001", registry), "PRIVATE_LAN")
+
+    def test_unregistered_node_id_never_classified_private_lan(self):
+        """Even though the address itself is a private-range IP, a node_id
+        that isn't actually in the registry must not be auto-trusted."""
+        registry = NodeRegistry()
+        self.assertEqual(classify_node_scope("phantom-node", "http://192.168.1.99:9001", registry), "UNTRUSTED")
+
+    def test_public_address_never_classified_private_lan(self):
+        registry = NodeRegistry()
+        registry.register(NodeSpec(node_id="node-c", url="http://8.8.8.8:9001", role="worker"))
+        self.assertEqual(classify_node_scope("node-c", "http://8.8.8.8:9001", registry), "UNTRUSTED")
 
 
 if __name__ == "__main__":
