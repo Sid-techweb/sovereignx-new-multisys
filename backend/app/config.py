@@ -102,11 +102,29 @@ class Settings(BaseSettings):
     # is zero remote dependency in the default deployment. AI_NODES_CONFIG is
     # a JSON array of node definitions (see NodeRegistry.from_settings for
     # the exact shape) consulted only when distributed mode is on.
-    # NODE_SHARED_SECRET authenticates node-to-node requests once a worker
-    # API exists (not yet implemented -- foundation only).
+    # NODE_SHARED_SECRET authenticates node-to-node requests to the worker
+    # API (app/worker/main.py). The worker refuses every execution request
+    # (not just unauthenticated ones) when this is empty -- an unset secret
+    # must never mean "open", see app/worker/auth.py.
     SOVEREIGN_DISTRIBUTED_MODE: bool = False
     AI_NODES_CONFIG: str = ""
     NODE_SHARED_SECRET: str = ""
+    # This process's own node identity, used only by the worker service's
+    # /health response and its own log lines. Meaningless to the main app;
+    # a worker deployment overrides it via its own environment (e.g.
+    # NODE_ID=node-b), never a literal here.
+    NODE_ID: str = "local"
+    # Bounded connect/read/write timeouts for Node A calling a worker's
+    # HTTP API (app/services/worker_client.py) -- separate from
+    # RESOURCE_RELEASE_TIMEOUT_SECONDS above, which is about local resource
+    # headroom, not network calls.
+    WORKER_CONNECT_TIMEOUT_SECONDS: float = 3.0
+    WORKER_READ_TIMEOUT_SECONDS: float = 30.0
+    # How long a node's cached health result is trusted before the next
+    # routing decision re-probes it (see app/services/node_health_cache.py).
+    # Short by design for local development; a real deployment would widen
+    # this once LAN latency/health-check cost is measured.
+    NODE_HEALTH_CACHE_TTL_SECONDS: float = 15.0
 
     @field_validator("MODEL_PROVIDER")
     @classmethod
