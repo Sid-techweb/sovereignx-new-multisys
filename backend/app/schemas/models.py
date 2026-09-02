@@ -11,6 +11,10 @@ class ModelInfoResponse(BaseModel):
     # LLM/backend being down -- GENERAL_CHAT does not depend on it.
     embedding_worker_status: Optional[str] = None
     embedding_worker_pid: Optional[int] = None
+    # Live gateway endpoint, from configuration -- never a hardcoded
+    # display literal in the frontend (see Settings.jsx). None when the
+    # provider isn't Ollama (e.g. mock).
+    ollama_base_url: Optional[str] = None
 
 class GroundedQueryRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Question to ask the grounded model")

@@ -54,6 +54,7 @@ async def get_models():
         status=status,
         embedding_worker_status=embedding_worker_status,
         embedding_worker_pid=embedding_worker_pid,
+        ollama_base_url=settings.OLLAMA_BASE_URL if provider.lower() == "ollama" else None,
     )
 
 @router.post("/models/chat", response_model=ChatResponse)
