@@ -18,6 +18,10 @@ class ModelInfoResponse(BaseModel):
     embedding_provider: Optional[str] = None
     llm_ready: Optional[bool] = None
     embedding_ready: Optional[bool] = None
+    # Live gateway endpoint, from configuration -- never a hardcoded
+    # display literal in the frontend (see Settings.jsx). None when the
+    # provider isn't Ollama (e.g. mock).
+    ollama_base_url: Optional[str] = None
 
 class GroundedQueryRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Question to ask the grounded model")

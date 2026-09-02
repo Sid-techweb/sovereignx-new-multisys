@@ -6,8 +6,12 @@ import os
 
 logger = logging.getLogger("sovereignx")
 
-# Dev-config trusted list: includes localhost, loopbacks, chaos IP, and testserver
-TRUSTED_HOSTS_DEV = {"localhost", "127.0.0.1", "10.11.58.35", "testserver"}
+# Dev-config trusted list: localhost, loopbacks, and testserver only. A
+# trusted remote SovereignX node ("2 lap sov") is never a hardcoded IP
+# literal here -- it comes from the configured NodeRegistry (AI_NODES_CONFIG,
+# see app/services/node_registry.py) via classify_network_target() below, or
+# from OLLAMA_BASE_URL's own host (added dynamically just below this block).
+TRUSTED_HOSTS_DEV = {"localhost", "127.0.0.1", "testserver"}
 
 # Demo-build trusted list: ONLY localhost, loopbacks, and testserver
 TRUSTED_HOSTS_DEMO = {"localhost", "127.0.0.1", "testserver"}

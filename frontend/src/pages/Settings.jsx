@@ -7,6 +7,10 @@ export default function Settings({ modelConfig, healthStatus }) {
   const provider = modelConfig.provider || 'mock';
   const modelName = modelConfig.model || 'mock-document-analyzer';
   const status = modelConfig.status || 'offline';
+  // Live from GET /models (settings.OLLAMA_BASE_URL) -- never a hardcoded
+  // display literal; a real deployment's endpoint is whatever the backend
+  // is actually configured with, not a fixed placeholder in this file.
+  const ollamaBaseUrl = modelConfig.ollama_base_url || 'N/A (mock provider or unavailable)';
 
   return (
     <div className="space-y-6">
@@ -31,8 +35,8 @@ export default function Settings({ modelConfig, healthStatus }) {
             
             <div className="flex justify-between border-b border-console-lineSoft pb-2">
               <span className="text-console-muted">OLLAMA_BASE_URL</span>
-              <span className="text-console-text text-right truncate max-w-[250px] tabular-nums" title="http://10.11.58.35:11434">
-                http://10.11.58.35:11434
+              <span className="text-console-text text-right truncate max-w-[250px] tabular-nums" title={ollamaBaseUrl}>
+                {ollamaBaseUrl}
               </span>
             </div>
 
